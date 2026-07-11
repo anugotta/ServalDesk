@@ -1,4 +1,4 @@
-package com.droiddesk.droiddesk.view
+package com.orailnoor.droiddesk.view
 
 import android.app.Activity
 import android.os.Bundle

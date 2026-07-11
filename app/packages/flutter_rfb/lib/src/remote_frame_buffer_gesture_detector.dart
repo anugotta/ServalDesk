@@ -92,6 +92,9 @@ class _RemoteFrameBufferGestureDetectorState
 
   int _lastDirectX = 0;
   int _lastDirectY = 0;
+  
+  int _maxPointersInGesture = 0;
+  bool _hasScrolled = false;
 
   void _handlePointerEvent(PointerEvent event) {
     if (event.kind == PointerDeviceKind.mouse) {
@@ -106,8 +109,31 @@ class _RemoteFrameBufferGestureDetectorState
         y: y,
       );
     } else {
-      if (event is PointerDownEvent) _activePointers.add(event.pointer);
-      if (event is PointerUpEvent || event is PointerCancelEvent) _activePointers.remove(event.pointer);
+      if (event is PointerDownEvent) {
+        _activePointers.add(event.pointer);
+        if (_activePointers.length > _maxPointersInGesture) {
+          _maxPointersInGesture = _activePointers.length;
+        }
+        _lastDirectX = _getX(event.localPosition);
+        _lastDirectY = _getY(event.localPosition);
+      }
+      
+      if (event is PointerUpEvent || event is PointerCancelEvent) {
+        _activePointers.remove(event.pointer);
+        if (_activePointers.isEmpty) {
+          if (_maxPointersInGesture == 2 && !_hasScrolled) {
+            final int x = widget.inputMode == InputMode.trackpad ? _virtualMouseX.toInt() : _lastDirectX;
+            final int y = widget.inputMode == InputMode.trackpad ? _virtualMouseY.toInt() : _lastDirectY;
+            
+            // Execute Right Click!
+            _sendPointerEvent(button1Down: false, button2Down: false, button3Down: true, x: x, y: y);
+            _sendPointerEvent(button1Down: false, button2Down: false, button3Down: false, x: x, y: y);
+          }
+          // Reset gesture state
+          _maxPointersInGesture = 0;
+          _hasScrolled = false;
+        }
+      }
     }
   }
 
@@ -220,6 +246,8 @@ class _RemoteFrameBufferGestureDetectorState
           // Two-finger scroll
           _scrollAccumulator += details.delta.dy;
           if (_scrollAccumulator.abs() > 15.0) {
+            _hasScrolled = true; // Prevents triggering right-click on release
+            
             final bool isUp = _scrollAccumulator > 0;
             final int x = widget.inputMode == InputMode.trackpad ? _virtualMouseX.toInt() : _getX(details.localPosition);
             final int y = widget.inputMode == InputMode.trackpad ? _virtualMouseY.toInt() : _getY(details.localPosition);

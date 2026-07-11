@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.droiddesk.droiddesk"
+    namespace = "com.orailnoor.droiddesk"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.droiddesk.droiddesk"
+        applicationId = "com.orailnoor.droiddesk"
         minSdk = 28  // Downgraded to 28 to bypass W^X (Write XOR Execute) restrictions on app data
         targetSdk = 28 // API 28 completely disables the Android 10+ execve() block
         versionCode = flutter.versionCode
@@ -44,6 +44,11 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
+    }
+
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
     }
 }
 

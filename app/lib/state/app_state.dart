@@ -58,10 +58,10 @@ class AppState extends ChangeNotifier {
 
   String get gpuType {
     final vendor = _deviceInfo['gpuVendor']?.toString() ?? '';
-    if (vendor.contains('adreno')) return 'Adreno (Hardware Accelerated)';
-    if (vendor.contains('mali')) return 'Mali (Software Fallback)';
-    if (vendor.contains('powervr')) return 'PowerVR (Software Fallback)';
-    return 'Unknown (Software Fallback)';
+    if (vendor.contains('adreno')) return 'Adreno (Snapdragon)';
+    if (vendor.contains('mali')) return 'Mali (MediaTek/Exynos)';
+    if (vendor.contains('powervr')) return 'PowerVR';
+    return 'Unknown GPU';
   }
 
   // ── Initialization ──

@@ -34,13 +34,14 @@ class HomeScreen extends StatelessWidget {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          gradient: DroidTheme.primaryGradient,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.desktop_windows_rounded,
-                          size: 20,
-                          color: Colors.white,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.asset(
+                            'assets/icons/logo.png',
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -170,6 +171,15 @@ class HomeScreen extends StatelessWidget {
                                   if (state.isRunning) {
                                     state.stopLinux();
                                   } else {
+                                    if (!state.isDEInstalled) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('No Desktop Environment installed. Please complete setup first.'),
+                                          backgroundColor: DroidTheme.error,
+                                        ),
+                                      );
+                                      return;
+                                    }
                                     final size = MediaQuery.of(context).size;
                                     final double maxDim =
                                         size.width > size.height
@@ -218,29 +228,29 @@ class HomeScreen extends StatelessWidget {
                               const SizedBox(height: 10),
 
                               // ── Install Apps ──
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _SmallActionCard(
-                                      icon: Icons.add_circle_outline_rounded,
-                                      title: 'Install Apps',
-                                      color: DroidTheme.accent,
-                                      onTap: () =>
-                                          _showAppInstaller(context, state),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _SmallActionCard(
-                                      icon: Icons.info_outline_rounded,
-                                      title: 'System Info',
-                                      color: DroidTheme.warning,
-                                      onTap: () =>
-                                          _showSystemInfo(context, state),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              // Row(
+                              //   children: [
+                              //     Expanded(
+                              //       child: _SmallActionCard(
+                              //         icon: Icons.add_circle_outline_rounded,
+                              //         title: 'Install Apps',
+                              //         color: DroidTheme.accent,
+                              //         onTap: () =>
+                              //             _showAppInstaller(context, state),
+                              //       ),
+                              //     ),
+                              //     const SizedBox(width: 10),
+                              //     Expanded(
+                              //       child: _SmallActionCard(
+                              //         icon: Icons.info_outline_rounded,
+                              //         title: 'System Info',
+                              //         color: DroidTheme.warning,
+                              //         onTap: () =>
+                              //             _showSystemInfo(context, state),
+                              //       ),
+                              //     ),
+                              //   ],
+                              // ),
                             ]
                             .animate(interval: 80.ms)
                             .fadeIn(delay: 300.ms, duration: 400.ms)

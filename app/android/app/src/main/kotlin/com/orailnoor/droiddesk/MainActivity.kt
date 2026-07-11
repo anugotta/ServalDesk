@@ -1,4 +1,4 @@
-package com.droiddesk.droiddesk
+package com.orailnoor.droiddesk
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -10,10 +10,10 @@ import android.os.PowerManager
 import android.content.Context
 import android.net.Uri
 import android.provider.Settings
-import com.droiddesk.droiddesk.service.DroidDeskService
-import com.droiddesk.droiddesk.runtime.LinuxRuntime
-import com.droiddesk.droiddesk.runtime.RootfsManager
-import com.droiddesk.droiddesk.view.AndroidSurfaceViewFactory
+import com.orailnoor.droiddesk.service.DroidDeskService
+import com.orailnoor.droiddesk.runtime.LinuxRuntime
+import com.orailnoor.droiddesk.runtime.RootfsManager
+import com.orailnoor.droiddesk.view.AndroidSurfaceViewFactory
 import kotlin.concurrent.thread
 import android.os.Handler
 
@@ -151,7 +151,7 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "launchDesktopActivity" -> {
-                    val intent = Intent(this@MainActivity, com.droiddesk.droiddesk.view.DesktopActivity::class.java)
+                    val intent = Intent(this@MainActivity, com.orailnoor.droiddesk.view.DesktopActivity::class.java)
                     startActivity(intent)
                     result.success(true)
                 }

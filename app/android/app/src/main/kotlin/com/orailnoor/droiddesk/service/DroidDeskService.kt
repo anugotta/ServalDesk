@@ -1,4 +1,4 @@
-package com.droiddesk.droiddesk.service
+package com.orailnoor.droiddesk.service
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -12,7 +12,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import com.droiddesk.droiddesk.MainActivity
+import com.orailnoor.droiddesk.MainActivity
 
 /**
  * Foreground service that keeps the Linux runtime alive.

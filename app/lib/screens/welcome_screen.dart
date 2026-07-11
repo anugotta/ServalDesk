@@ -12,7 +12,9 @@ class WelcomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: DroidTheme.backgroundGradient),
+        decoration: const BoxDecoration(
+          gradient: DroidTheme.backgroundGradient,
+        ),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -22,25 +24,26 @@ class WelcomeScreen extends StatelessWidget {
 
                 // ── Logo / Icon ──
                 Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    gradient: DroidTheme.primaryGradient,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: DroidTheme.primary.withValues(alpha: 0.4),
-                        blurRadius: 30,
-                        spreadRadius: 2,
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: DroidTheme.primary.withValues(alpha: 0.4),
+                            blurRadius: 30,
+                            spreadRadius: 2,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.desktop_windows_rounded,
-                    size: 48,
-                    color: Colors.white,
-                  ),
-                )
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: Image.asset(
+                          'assets/icons/logo.png',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    )
                     .animate()
                     .scale(
                       begin: const Offset(0.5, 0.5),
@@ -53,28 +56,36 @@ class WelcomeScreen extends StatelessWidget {
 
                 // ── Title ──
                 Text(
-                  'DroidDesk',
-                  style: DroidTheme.headingXl.copyWith(
-                    fontSize: 36,
-                    letterSpacing: -1.0,
-                  ),
-                )
+                      'DroidDesk',
+                      style: DroidTheme.headingXl.copyWith(
+                        fontSize: 36,
+                        letterSpacing: -1.0,
+                      ),
+                    )
                     .animate()
                     .fadeIn(delay: 200.ms, duration: 500.ms)
-                    .slideY(begin: 0.3, duration: 500.ms, curve: Curves.easeOut),
+                    .slideY(
+                      begin: 0.3,
+                      duration: 500.ms,
+                      curve: Curves.easeOut,
+                    ),
 
                 const SizedBox(height: 12),
 
                 // ── Tagline ──
                 Text(
-                  'Full Linux Desktop on Android',
-                  style: DroidTheme.bodyLg.copyWith(
-                    color: DroidTheme.textSecondary,
-                  ),
-                )
+                      'Full Linux Desktop on Android',
+                      style: DroidTheme.bodyLg.copyWith(
+                        color: DroidTheme.textSecondary,
+                      ),
+                    )
                     .animate()
                     .fadeIn(delay: 400.ms, duration: 500.ms)
-                    .slideY(begin: 0.3, duration: 500.ms, curve: Curves.easeOut),
+                    .slideY(
+                      begin: 0.3,
+                      duration: 500.ms,
+                      curve: Curves.easeOut,
+                    ),
 
                 const SizedBox(height: 8),
 
@@ -85,9 +96,7 @@ class WelcomeScreen extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                     letterSpacing: 1.5,
                   ),
-                )
-                    .animate()
-                    .fadeIn(delay: 600.ms, duration: 500.ms),
+                ).animate().fadeIn(delay: 600.ms, duration: 500.ms),
 
                 const Spacer(flex: 1),
 
@@ -96,72 +105,102 @@ class WelcomeScreen extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   alignment: WrapAlignment.center,
-                  children: [
-                    _featureChip(Icons.speed_rounded, 'GPU Accelerated'),
-                    _featureChip(Icons.security_rounded, 'No Root Needed'),
-                    _featureChip(Icons.desktop_mac_rounded, 'XFCE Desktop'),
-                    _featureChip(Icons.memory_rounded, 'Native Performance'),
-                  ]
-                      .animate(interval: 100.ms)
-                      .fadeIn(delay: 800.ms, duration: 400.ms)
-                      .slideX(begin: -0.1, duration: 400.ms),
+                  children:
+                      [
+                            _featureChip(
+                              Icons.storage_rounded,
+                              'Containerized',
+                            ),
+                            _featureChip(
+                              Icons.security_rounded,
+                              'No Root Needed',
+                            ),
+                            _featureChip(
+                              Icons.desktop_mac_rounded,
+                              'Linux Desktop',
+                            ),
+                            _featureChip(
+                              Icons.offline_bolt_rounded,
+                              'Local Execution',
+                            ),
+                          ]
+                          .animate(interval: 100.ms)
+                          .fadeIn(delay: 800.ms, duration: 400.ms)
+                          .slideX(begin: -0.1, duration: 400.ms),
                 ),
 
                 const Spacer(flex: 2),
 
                 // ── Get Started Button ──
                 SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        PageRouteBuilder(
-                          pageBuilder: (context, animation, secondaryAnimation) => const InstallTypePickerScreen(),
-                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(0, 0.05),
-                                  end: Offset.zero,
-                                ).animate(CurvedAnimation(
-                                  parent: animation,
-                                  curve: Curves.easeOut,
-                                )),
-                                child: child,
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            PageRouteBuilder(
+                              pageBuilder:
+                                  (context, animation, secondaryAnimation) =>
+                                      const InstallTypePickerScreen(),
+                              transitionsBuilder:
+                                  (
+                                    context,
+                                    animation,
+                                    secondaryAnimation,
+                                    child,
+                                  ) {
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: SlideTransition(
+                                        position:
+                                            Tween<Offset>(
+                                              begin: const Offset(0, 0.05),
+                                              end: Offset.zero,
+                                            ).animate(
+                                              CurvedAnimation(
+                                                parent: animation,
+                                                curve: Curves.easeOut,
+                                              ),
+                                            ),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                              transitionDuration: const Duration(
+                                milliseconds: 400,
                               ),
-                            );
-                          },
-                          transitionDuration: const Duration(milliseconds: 400),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: DroidTheme.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Install Ubuntu',
-                          style: DroidTheme.headingSm.copyWith(
-                            color: Colors.white,
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: DroidTheme.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
+                          elevation: 0,
                         ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward_rounded, size: 20),
-                      ],
-                    ),
-                  ),
-                )
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Install Ubuntu',
+                              style: DroidTheme.headingSm.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.arrow_forward_rounded, size: 20),
+                          ],
+                        ),
+                      ),
+                    )
                     .animate()
                     .fadeIn(delay: 1200.ms, duration: 500.ms)
-                    .slideY(begin: 0.3, duration: 500.ms, curve: Curves.easeOut),
+                    .slideY(
+                      begin: 0.3,
+                      duration: 500.ms,
+                      curve: Curves.easeOut,
+                    ),
 
                 const SizedBox(height: 48),
               ],
@@ -185,7 +224,10 @@ class WelcomeScreen extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: DroidTheme.secondary),
           const SizedBox(width: 6),
-          Text(label, style: DroidTheme.bodySm.copyWith(color: DroidTheme.textSecondary)),
+          Text(
+            label,
+            style: DroidTheme.bodySm.copyWith(color: DroidTheme.textSecondary),
+          ),
         ],
       ),
     );
