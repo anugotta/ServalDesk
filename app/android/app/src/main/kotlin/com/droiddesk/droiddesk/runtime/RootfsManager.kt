@@ -397,11 +397,19 @@ class RootfsManager(private val context: Context) {
                 // Pre-configure Firefox PPA to fix Ubuntu snap issue
                 onProgress(0.1, "Configuring repositories...")
                 runtime.executeCommand("""
-                    DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y software-properties-common
+                    DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y software-properties-common wget gpg
                     add-apt-repository ppa:mozillateam/ppa -y
                     echo "Package: *" > /etc/apt/preferences.d/mozilla-firefox
                     echo "Pin: release o=LP-PPA-mozillateam" >> /etc/apt/preferences.d/mozilla-firefox
                     echo "Pin-Priority: 1001" >> /etc/apt/preferences.d/mozilla-firefox
+                    
+                    # Add Microsoft repository for VS Code
+                    mkdir -p /etc/apt/keyrings
+                    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+                    install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+                    echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
+                    rm -f packages.microsoft.gpg
+                    
                     apt-get update -y
                 """.trimIndent(), onLog)
 
@@ -414,7 +422,7 @@ class RootfsManager(private val context: Context) {
                 }
                 
                 if (installType == "full") {
-                    packages += " libreoffice gimp inkscape vlc audacity firefox"
+                    packages += " libreoffice gimp inkscape vlc audacity firefox code apt-transport-https"
                 }
 
                 // Fix broken dependencies from interrupted apt installs

@@ -133,8 +133,16 @@ class MainActivity : FlutterActivity() {
                 "startLinux" -> {
                     val desktopEnv = call.argument<String>("de") ?: "xfce4"
                     val mode = call.argument<String>("mode") ?: "vnc"
-                    val width = call.argument<Int>("width") ?: 1920
-                    val height = call.argument<Int>("height") ?: 1080
+                    var width = call.argument<Int>("width") ?: 1920
+                    var height = call.argument<Int>("height") ?: 1080
+                    
+                    // Enforce 720p maximum resolution for massive performance boost
+                    if (height > 720) {
+                        val scale = 720.0 / height
+                        width = (width * scale).toInt()
+                        height = 720
+                    }
+                    
                     startForegroundService()
                     thread {
                         linuxRuntime.startSession(desktopEnv, mode, width, height)

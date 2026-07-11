@@ -121,9 +121,63 @@ class LinuxRuntime(private val context: Context) {
             mkdir -p ~/.vnc
             echo "password" | vncpasswd -f > ~/.vnc/passwd
             chmod 600 ~/.vnc/passwd
+
+            # Setup an automatic apt hook so any newly installed app gets patched instantly
+            cat << 'HOOK' > /usr/local/bin/patch-root-binaries.sh
+            #!/bin/bash
+            
+            # 1. Binary patches for apps that still need geteuid spoofing (VLC)
+            VLC_BIN="/usr/bin/vlc"
+            if [ -f "${'$'}VLC_BIN" ] && ! grep -q "getppid" "${'$'}VLC_BIN"; then
+                sed -i 's/geteuid/getppid/g' "${'$'}VLC_BIN" || true
+            fi
+            
+            # 2. Foolproof wrapper method for Electron/Chromium apps
+            # We rename the real binary and put a script in its place that always adds --no-sandbox
+            BINS=(
+                "/usr/share/code/code"
+                "/usr/share/code-insiders/code-insiders"
+                "/usr/share/discord/Discord"
+                "/opt/Discord/Discord"
+                "/opt/google/chrome/chrome"
+                "/opt/google/chrome/google-chrome"
+                "/usr/lib/chromium/chromium"
+                "/usr/lib/chromium-browser/chromium-browser"
+                "/opt/brave.com/brave/brave"
+                "/opt/microsoft/msedge/msedge"
+                "/opt/vivaldi/vivaldi"
+            )
+            
+            for bin in "${'$'}{BINS[@]}"; do
+                if [ -f "${'$'}bin" ]; then
+                    # Check if it's already our wrapper script
+                    if ! head -n 1 "${'$'}bin" | grep -q "bash"; then
+                        mv "${'$'}bin" "${'$'}bin.real"
+                        cat << WRAPPER > "${'$'}bin"
+            #!/bin/bash
+            exec "${'$'}bin.real" --no-sandbox "\${'$'}@"
+            WRAPPER
+                        chmod +x "${'$'}bin"
+                    fi
+                fi
+            done
+            HOOK
+            chmod +x /usr/local/bin/patch-root-binaries.sh
+            mkdir -p /etc/apt/apt.conf.d
+            echo 'DPkg::Post-Invoke {"/usr/local/bin/patch-root-binaries.sh";};' > /etc/apt/apt.conf.d/99patch-root
+
+            # Transparent wrapper for manual 'dpkg -i' installations
+            cat << 'DPKG_WRAPPER' > /usr/local/bin/dpkg
+            #!/bin/bash
+            /usr/bin/dpkg "${'$'}@"
+            RET=${'$'}?
+            /usr/local/bin/patch-root-binaries.sh
+            exit ${'$'}RET
+            DPKG_WRAPPER
+            chmod +x /usr/local/bin/dpkg
             
             cat << 'EOF' > ~/.vnc/xstartup
-            #!/bin/sh
+            #!/bin/bash
             export DISPLAY=:0
             export LIBGL_ALWAYS_SOFTWARE=1
             export GALLIUM_DRIVER=llvmpipe
@@ -135,14 +189,11 @@ class LinuxRuntime(private val context: Context) {
             echo "Xft.dpi: 144" > ${'$'}HOME/.Xresources
             xrdb ${'$'}HOME/.Xresources || true
             
-            # Patch binaries that refuse to run as root (VLC, Chromium)
-            if [ -f /usr/bin/vlc ] && ! grep -q "getppid" /usr/bin/vlc; then
-                sed -i 's/geteuid/getppid/g' /usr/bin/vlc || true
+            # Ensure any pre-existing unpatched binaries are fixed automatically
+            if [ -x /usr/local/bin/patch-root-binaries.sh ]; then
+                /usr/local/bin/patch-root-binaries.sh
             fi
-            if [ -f /usr/bin/google-chrome ] && ! grep -q "getppid" /usr/bin/google-chrome; then
-                sed -i 's/geteuid/getppid/g' /usr/bin/google-chrome || true
-            fi
-
+            
             if command -v dbus-launch >/dev/null; then
                 exec dbus-launch --exit-with-session startxfce4
             else

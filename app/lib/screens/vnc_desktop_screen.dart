@@ -23,6 +23,7 @@ class _VncDesktopScreenState extends State<VncDesktopScreen> {
   InputMode _inputMode = InputMode.trackpad;
   double _trackpadSensitivity = 3.5;
   final FocusNode _focusNode = FocusNode();
+  final Set<int> _activePointers = {};
 
   @override
   void initState() {
@@ -69,13 +70,17 @@ class _VncDesktopScreenState extends State<VncDesktopScreen> {
         children: [
           // ── The VNC Viewer (full screen, pinch-to-zoom) ──
           Positioned.fill(
-            child: GestureDetector(
-              // Double-tap anywhere to toggle controls
-              onDoubleTap: () {
-                setState(() {
-                  _showControls = !_showControls;
-                });
+            child: Listener(
+              onPointerDown: (event) {
+                _activePointers.add(event.pointer);
+                if (_activePointers.length == 3) {
+                  setState(() {
+                    _showControls = !_showControls;
+                  });
+                }
               },
+              onPointerUp: (event) => _activePointers.remove(event.pointer),
+              onPointerCancel: (event) => _activePointers.remove(event.pointer),
               child: Builder(
                 builder: (context) {
                   if (!_connected) {

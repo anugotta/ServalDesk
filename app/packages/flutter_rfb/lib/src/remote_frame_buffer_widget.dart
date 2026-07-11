@@ -60,6 +60,13 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
   Option<SendPort> _isolateSendPort = none();
   final ValueNotifier<Size> _sizeValueNotifier = ValueNotifier<Size>(Size.zero);
   Option<StreamSubscription<Object?>> _streamSubscription = none();
+  
+  // 60 FPS Render Throttler
+  Timer? _renderTimer;
+  bool _needsRender = false;
+  bool _isRendering = false;
+  int _fbWidth = 0;
+  int _fbHeight = 0;
 
   @override
   Widget build(final BuildContext context) => _frameBuffer
@@ -87,6 +94,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
       (final StreamSubscription<Object?> subscription) =>
           unawaited(subscription.cancel()),
     );
+    _renderTimer?.cancel();
     _image.match(
       () {},
       (final Image image) => image.dispose(),
@@ -128,13 +136,13 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
 
   void _decodeAndUpdateImage({
     required final ByteData frameBuffer,
-    required final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
-        message,
-  }) =>
+  }) {
+      if (!mounted) return;
+      _isRendering = true;
       decodeImageFromPixels(
         frameBuffer.buffer.asUint8List(),
-        message.frameBufferWidth,
-        message.frameBufferHeight,
+        _fbWidth,
+        _fbHeight,
         PixelFormat.bgra8888,
         (final Image result) {
           if (mounted) {
@@ -145,6 +153,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                   (final Image image) => image.dispose(),
                 );
                 _image = some(result);
+                _isRendering = false;
               },
             );
             _isolateSendPort.match(
@@ -157,15 +166,11 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
           }
         },
       );
+  }
 
-  Task<void> _handleFrameBufferUpdateMessage({
-    required final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
-        update,
-  }) =>
-      Task<void>(() async {
-        _logger.finer(
-          'Received new update message with ${update.update.rectangles.length} rectangles',
-        );
+  Future<void> _handleFrameBufferUpdateMessage({
+    required final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate update,
+  }) async {
         _isolateSendPort = some(update.sendPort);
         if (_frameBuffer.isNone()) {
           _frameBuffer = some(
@@ -174,75 +179,65 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
             ),
           );
         }
-        unawaited(
-          _frameBuffer.match(
-            () async {},
-            (final ByteData frameBuffer) async {
-              for (final RemoteFrameBufferClientUpdateRectangle rectangle
-                  in update.update.rectangles) {
-                await rectangle.encodingType.when(
-                  copyRect: () async {
-                    final int sourceX = rectangle.byteData.getUint16(0);
-                    final int sourceY = rectangle.byteData.getUint16(2);
-                    final BytesBuilder bytesBuilder = BytesBuilder();
-                    for (int row = 0; row < rectangle.height; row++) {
-                      for (int column = 0; column < rectangle.width; column++) {
-                        bytesBuilder.add(
-                          frameBuffer.buffer.asUint8List(
-                            ((sourceY + row) * update.frameBufferWidth +
-                                    sourceX +
-                                    column) *
-                                4,
-                            4,
-                          ),
-                        );
-                      }
-                    }
-                    return (await updateFrameBuffer(
-                      frameBuffer: frameBuffer,
-                      frameBufferSize: Size(
-                        update.frameBufferWidth.toDouble(),
-                        update.frameBufferHeight.toDouble(),
-                      ),
-                      rectangle: rectangle.copyWith(
-                        encodingType: const RemoteFrameBufferEncodingType.raw(),
-                        byteData: ByteData.sublistView(
-                          bytesBuilder.toBytes(),
-                        ),
-                      ),
-                    ).run())
-                        .match(
-                      (final Object error) =>
-                          // ignore: avoid_print
-                          print('Error updating frame buffer: $error'),
-                      (final _) {},
-                    );
-                  },
-                  raw: () async => (await updateFrameBuffer(
-                    frameBuffer: frameBuffer,
+        
+        final ByteData? fb = _frameBuffer.toNullable();
+        if (fb != null) {
+            final Stopwatch stopwatch = Stopwatch()..start();
+            
+            for (final RemoteFrameBufferClientUpdateRectangle rectangle
+                in update.update.rectangles) {
+              
+              if (stopwatch.elapsedMilliseconds > 8) {
+                await Future.delayed(Duration.zero);
+                stopwatch.reset();
+              }
+              
+              rectangle.encodingType.when(
+                copyRect: () {
+                  final int sourceX = rectangle.byteData.getUint16(0);
+                  final int sourceY = rectangle.byteData.getUint16(2);
+                  
+                  final int rowBytes = rectangle.width * 4;
+                  final int fbWidthBytes = update.frameBufferWidth * 4;
+                  
+                  final Uint8List fbBytes = fb.buffer.asUint8List(fb.offsetInBytes, fb.lengthInBytes);
+                  final Uint8List copiedBytes = Uint8List(rectangle.height * rowBytes);
+                  
+                  for (int row = 0; row < rectangle.height; row++) {
+                    final int srcOffset = ((sourceY + row) * fbWidthBytes) + (sourceX * 4);
+                    final int destOffset = row * rowBytes;
+                    copiedBytes.setRange(destOffset, destOffset + rowBytes, fbBytes, srcOffset);
+                  }
+
+                  updateFrameBuffer(
+                    frameBuffer: fb,
                     frameBufferSize: Size(
                       update.frameBufferWidth.toDouble(),
                       update.frameBufferHeight.toDouble(),
                     ),
-                    rectangle: rectangle,
-                  ).run())
-                      .match(
-                    (final Object error) =>
-                        // ignore: avoid_print
-                        print('Error updating frame buffer: $error'),
-                    (final _) {},
+                    rectangle: rectangle.copyWith(
+                      encodingType: const RemoteFrameBufferEncodingType.raw(),
+                      byteData: ByteData.sublistView(copiedBytes),
+                    ),
+                  );
+                },
+                raw: () => updateFrameBuffer(
+                  frameBuffer: fb,
+                  frameBufferSize: Size(
+                    update.frameBufferWidth.toDouble(),
+                    update.frameBufferHeight.toDouble(),
                   ),
-                  unsupported: (final ByteData bytes) async {},
-                );
-              }
-              _decodeAndUpdateImage(
-                frameBuffer: frameBuffer,
-                message: update,
+                  rectangle: rectangle,
+                ),
+                unsupported: (final ByteData bytes) {},
               );
-            },
-          ),
-        );
-      });
+            }
+            
+            _fbWidth = update.frameBufferWidth;
+            _fbHeight = update.frameBufferHeight;
+            _needsRender = true;
+        }
+  }
 
   /// Initializes logic that requires to be run asynchronous.
   Future<void> _initAsync() async {
@@ -268,7 +263,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                 final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
                     update,
               ) {
-                _handleFrameBufferUpdateMessage(update: update).run();
+                _handleFrameBufferUpdateMessage(update: update);
               },
             );
           }
@@ -288,6 +283,17 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
         onError: receivePort.sendPort,
       ),
     );
+
+    // Start 60 FPS Render Loop (1000ms / 60 = ~16ms)
+    _renderTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (_needsRender && !_isRendering) {
+        _needsRender = false;
+        _frameBuffer.match(
+          () {},
+          (fb) => _decodeAndUpdateImage(frameBuffer: fb),
+        );
+      }
+    });
   }
 
   void _monitorClipBoard() {
@@ -322,40 +328,55 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
     );
   }
 
-  void _rawKeyEventListener(final RawKeyEvent rawKeyEvent) =>
+  void _rawKeyEventListener(final RawKeyEvent rawKeyEvent) {
       _isolateSendPort.match(
         () {},
-        (final SendPort sendPort) => sendPort.send(
-          RemoteFrameBufferIsolateSendMessage.keyEvent(
-            down: rawKeyEvent.isKeyPressed(rawKeyEvent.logicalKey),
-            key: rawKeyEvent.logicalKey.asXWindowSystemKey(),
-          ),
-        ),
+        (final SendPort sendPort) {
+          final bool down = rawKeyEvent is RawKeyDownEvent;
+          int keysym = rawKeyEvent.logicalKey.asXWindowSystemKey();
+          
+          // Accurately resolve Shifted and Uppercase characters
+          if (rawKeyEvent.character != null && rawKeyEvent.character!.isNotEmpty) {
+            final int charCode = rawKeyEvent.character!.codeUnitAt(0);
+            if (charCode >= 32 && charCode <= 126) {
+              keysym = charCode;
+            }
+          }
+
+          sendPort.send(
+            RemoteFrameBufferIsolateSendMessage.keyEvent(
+              down: down,
+              key: keysym,
+            ),
+          );
+        }
       );
+  }
 
   /// Updates [frameBuffer] with the given [rectangle]s.
   @visibleForTesting
-  static TaskEither<Object, void> updateFrameBuffer({
+  static void updateFrameBuffer({
     required final ByteData frameBuffer,
     required final Size frameBufferSize,
     required final RemoteFrameBufferClientUpdateRectangle rectangle,
-  }) =>
-      TaskEither<Object, void>.tryCatch(
-        () async {
-          for (int y = 0; y < rectangle.height; y++) {
-            for (int x = 0; x < rectangle.width; x++) {
-              final int frameBufferX = rectangle.x + x;
-              final int frameBufferY = rectangle.y + y;
-              final int pixelBytes =
-                  rectangle.byteData.getUint32((y * rectangle.width + x) * 4);
-              frameBuffer.setUint32(
-                ((frameBufferY * frameBufferSize.width + frameBufferX) * 4)
-                    .toInt(),
-                pixelBytes,
-              );
-            }
+  }) {
+          final Uint8List dest = frameBuffer.buffer.asUint8List(frameBuffer.offsetInBytes, frameBuffer.lengthInBytes);
+          final Uint8List src = rectangle.byteData.buffer.asUint8List(rectangle.byteData.offsetInBytes, rectangle.byteData.lengthInBytes);
+          
+          final int rowBytes = rectangle.width * 4;
+          final int fbWidthBytes = frameBufferSize.width.toInt() * 4;
+          
+          if (rectangle.width == frameBufferSize.width && rectangle.x == 0) {
+              // Fast path: contiguous block copy (full screen update)
+              final int destOffset = (rectangle.y * fbWidthBytes).toInt();
+              dest.setRange(destOffset, destOffset + src.length, src);
+          } else {
+              // Fast path: Row-by-row block copy (memmove)
+              for (int y = 0; y < rectangle.height; y++) {
+                  final int srcOffset = y * rowBytes;
+                  final int destOffset = ((rectangle.y + y) * fbWidthBytes) + (rectangle.x * 4);
+                  dest.setRange(destOffset, destOffset + rowBytes, src, srcOffset);
+              }
           }
-        },
-        (final Object error, final _) => error,
-      );
+  }
 }

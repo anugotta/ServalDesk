@@ -230,12 +230,12 @@ void main() {
     'updateFrameBuffer(...) works',
     variant: updateFrameBufferVariant,
     (final _) async {
-      await RemoteFrameBufferWidgetState.updateFrameBuffer(
+      RemoteFrameBufferWidgetState.updateFrameBuffer(
         frameBuffer: updateFrameBufferVariant.currentValue!.inputFrameBuffer,
         frameBufferSize:
             updateFrameBufferVariant.currentValue!.inputFrameBufferSize,
         rectangle: updateFrameBufferVariant.currentValue!.inputRectangle,
-      ).run();
+      );
       expect(
         listEquals(
           updateFrameBufferVariant.currentValue!.inputFrameBuffer.buffer

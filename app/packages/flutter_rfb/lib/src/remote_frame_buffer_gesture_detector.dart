@@ -2,6 +2,7 @@ import 'dart:isolate';
 import 'dart:ui';
 
 import 'package:flutter/widgets.dart' hide Image;
+import 'package:flutter/gestures.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_isolate_messages.dart';
 import 'package:fpdart/fpdart.dart' hide State;
 
@@ -92,13 +93,59 @@ class _RemoteFrameBufferGestureDetectorState
   int _lastDirectX = 0;
   int _lastDirectY = 0;
 
+  void _handlePointerEvent(PointerEvent event) {
+    if (event.kind == PointerDeviceKind.mouse) {
+      final int x = (event.localPosition.dx / widget.remoteFrameBufferWidgetSize.width * widget.image.width).toInt();
+      final int y = (event.localPosition.dy / widget.remoteFrameBufferWidgetSize.height * widget.image.height).toInt();
+      
+      _sendPointerEvent(
+        button1Down: (event.buttons & kPrimaryMouseButton) != 0,
+        button2Down: (event.buttons & kMiddleMouseButton) != 0,
+        button3Down: (event.buttons & kSecondaryMouseButton) != 0,
+        x: x,
+        y: y,
+      );
+    } else {
+      if (event is PointerDownEvent) _activePointers.add(event.pointer);
+      if (event is PointerUpEvent || event is PointerCancelEvent) _activePointers.remove(event.pointer);
+    }
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is PointerScrollEvent && event.kind == PointerDeviceKind.mouse) {
+      final int x = (event.localPosition.dx / widget.remoteFrameBufferWidgetSize.width * widget.image.width).toInt();
+      final int y = (event.localPosition.dy / widget.remoteFrameBufferWidgetSize.height * widget.image.height).toInt();
+      
+      final bool isUp = event.scrollDelta.dy < 0;
+      
+      _sendPointerEvent(
+        button1Down: false, button2Down: false, button3Down: false,
+        button4Down: isUp, button5Down: !isUp,
+        x: x, y: y,
+      );
+      _sendPointerEvent(
+        button1Down: false, button2Down: false, button3Down: false,
+        button4Down: false, button5Down: false,
+        x: x, y: y,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Listener(
-      onPointerDown: (event) => _activePointers.add(event.pointer),
-      onPointerUp: (event) => _activePointers.remove(event.pointer),
-      onPointerCancel: (event) => _activePointers.remove(event.pointer),
+      onPointerHover: _handlePointerEvent,
+      onPointerDown: _handlePointerEvent,
+      onPointerMove: _handlePointerEvent,
+      onPointerUp: _handlePointerEvent,
+      onPointerCancel: _handlePointerEvent,
+      onPointerSignal: _handlePointerSignal,
       child: GestureDetector(
+      supportedDevices: const {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad, // Apple Magic Trackpad sends this
+      },
       // Trackpad clicks
       onTap: widget.inputMode == InputMode.trackpad
           ? () {
@@ -167,11 +214,13 @@ class _RemoteFrameBufferGestureDetectorState
             }
           : null,
       onPanUpdate: (details) {
+        if (details.kind == PointerDeviceKind.mouse) return; // Handled by Listener
+
         if (_activePointers.length >= 2) {
           // Two-finger scroll
           _scrollAccumulator += details.delta.dy;
           if (_scrollAccumulator.abs() > 15.0) {
-            final bool isUp = _scrollAccumulator < 0;
+            final bool isUp = _scrollAccumulator > 0;
             final int x = widget.inputMode == InputMode.trackpad ? _virtualMouseX.toInt() : _getX(details.localPosition);
             final int y = widget.inputMode == InputMode.trackpad ? _virtualMouseY.toInt() : _getY(details.localPosition);
             
