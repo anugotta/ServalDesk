@@ -299,6 +299,19 @@ class ChrootRuntime(private val context: Context) {
             return
         }
 
+        if (desktopEnv == "xfce4") {
+            XfceMobileProfile.install(
+                context = context,
+                homeDir = File(rootfsDir, "root"),
+                wallpaperFile = File(
+                    rootfsDir,
+                    "usr/share/backgrounds/droiddesk/ubuntu-touch.jpg",
+                ),
+                wallpaperPathInSession =
+                    "/usr/share/backgrounds/droiddesk/ubuntu-touch.jpg",
+            )
+        }
+
         ensureMounts()
         bindX11Socket()
 

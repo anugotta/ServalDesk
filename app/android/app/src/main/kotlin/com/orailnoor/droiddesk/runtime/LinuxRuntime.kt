@@ -971,11 +971,65 @@ class LinuxRuntime(private val context: Context) {
     }
 
     /**
+     * Installs optional packages without `pkg`'s implicit repository refresh.
+     *
+     * Desktop setup already creates the package indexes. Refreshing every repo for
+     * every optional app made an unrelated, temporarily syncing TUR mirror block
+     * packages from the healthy main/X11 repositories. apt-get uses the last
+     * verified indexes and only refreshes as a recovery step if installation fails.
+     */
+    private fun installOptionalPackages(
+        packages: List<String>,
+        onProgress: ((Double, String) -> Unit)? = null,
+        retryProgress: Double = 0.5,
+    ): Boolean {
+        if (packages.isEmpty()) return true
+        val packageNames = packages.joinToString(" ")
+
+        fun installAndRecover(): Boolean {
+            val installOutput = executeCommand("apt-get install -y $packageNames")
+            patchShebangs(force = true)
+            // A relocated package may already be unpacked while dependencies are
+            // still missing (notably Node.js -> c-ares). Let apt complete that
+            // dependency transaction after its maintainer scripts are patched.
+            executeCommand("apt-get --fix-broken install -y")
+            patchShebangs(force = true)
+            val configureOutput = executeCommand("dpkg --configure -a")
+            val installed = packages.all(::isDpkgPackageInstalled)
+            return installed && !configureOutput.startsWith("Error:") &&
+                (!installOutput.startsWith("Error:") || installed)
+        }
+
+        if (installAndRecover()) return true
+
+        onProgress?.invoke(retryProgress, "Refreshing package repositories and retrying...")
+        // apt may update main/X11 successfully while a third-party repository is
+        // temporarily inconsistent. Retrying is still useful with those newly
+        // refreshed lists and apt's last verified TUR index.
+        executeCommand("apt-get update")
+        return installAndRecover()
+    }
+
+    private fun isDpkgPackageInstalled(packageName: String): Boolean {
+        val result = executeCommand(
+            "dpkg-query -W -f='${'$'}{Status}' $packageName",
+        )
+        return !result.startsWith("Error:") && result.trim() == "install ok installed"
+    }
+
+    /**
      * Node.js currently ships a preinst script with Termux's absolute shebang.
      * Preinst runs before dpkg exposes the script in its admin directory, so it
      * must be relocated inside the deb before installation.
      */
     private fun installRelocatedNodejs(): Boolean {
+        // Install Node's native dependency before unpacking the relocated deb.
+        // Running apt --fix-broken with an unpacked local Node package can make
+        // apt replace it with the repository deb, whose absolute preinst shebang
+        // is exactly what this relocation path must avoid.
+        if (!isDpkgPackageInstalled("c-ares") &&
+            !installOptionalPackages(listOf("c-ares"))) return false
+
         val workDir = File(tmpDir, "nodejs-relocated-deb")
         workDir.deleteRecursively()
         workDir.mkdirs()
@@ -1008,7 +1062,8 @@ class LinuxRuntime(private val context: Context) {
                 .startsWith("Error:")) return false
 
         patchShebangs(force = true)
-        return installPackageGroup("pkg install -y nodejs")
+        if (executeCommand("dpkg --configure nodejs").startsWith("Error:")) return false
+        return isDpkgPackageInstalled("nodejs")
     }
 
     fun installDesktopEnvironmentNative(
@@ -1129,7 +1184,7 @@ class LinuxRuntime(private val context: Context) {
         // Repair/install Node before the generic dpkg configure pass.
         if (appId == "nodejs" || appId == "code_oss") {
             onProgress?.invoke(0.08, "Preparing relocated Node.js dependency...")
-            if (!File(binDir, "node").exists() && !installRelocatedNodejs()) return false
+            if (!isDpkgPackageInstalled("nodejs") && !installRelocatedNodejs()) return false
         }
 
         onProgress?.invoke(0.18, "Repairing interrupted packages...")
@@ -1138,33 +1193,34 @@ class LinuxRuntime(private val context: Context) {
         val ok = when (appId) {
             "firefox" -> {
                 onProgress?.invoke(0.25, "Installing Firefox...")
-                installPackageGroup("pkg install -y firefox")
+                installOptionalPackages(listOf("firefox"), onProgress, 0.55)
             }
             "code_oss" -> {
                 onProgress?.invoke(0.45, "Installing npm dependency...")
-                installPackageGroup("pkg install -y npm") && run {
+                installOptionalPackages(listOf("npm"), onProgress, 0.55) && run {
                     onProgress?.invoke(0.65, "Installing Code OSS...")
-                    installPackageGroup("pkg install -y code-oss")
+                    installOptionalPackages(listOf("code-oss"), onProgress, 0.78)
                 }
             }
             "nodejs" -> {
                 onProgress?.invoke(0.65, "Installing npm...")
-                installPackageGroup("pkg install -y npm")
+                installOptionalPackages(listOf("npm"), onProgress, 0.78)
             }
             "imagemagick" -> {
                 onProgress?.invoke(0.25, "Installing ImageMagick...")
-                installPackageGroup("pkg install -y imagemagick")
+                installOptionalPackages(listOf("imagemagick"), onProgress, 0.55)
             }
             else -> false
         }
 
-        if (ok) {
+        val verified = ok && getOptionalAppsStatus()[appId] == true
+        if (verified) {
             patchShebangs(force = true)
             onProgress?.invoke(1.0, "Installation complete")
         } else {
             onProgress?.invoke(-1.0, "Installation failed. Review the package log and retry.")
         }
-        return ok
+        return verified
     }
 
     // ── Session Management ──
@@ -1187,6 +1243,17 @@ class LinuxRuntime(private val context: Context) {
         patchElfRunpaths(prefixDir)
         compileSocketHook()
         patchEmbeddedXfcePaths()
+
+        if (selectedDesktop == "xfce4") {
+            XfceMobileProfile.install(
+                context = context,
+                homeDir = homeDir.apply { mkdirs() },
+                wallpaperFile = File(
+                    homeDir,
+                    ".local/share/backgrounds/droiddesk-ubuntu-touch.jpg",
+                ),
+            )
+        }
 
         // X11ServerService owns this socket. Never delete it from the client runtime.
         File(tmpDir, ".X11-unix").mkdirs()

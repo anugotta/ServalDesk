@@ -1,9 +1,12 @@
 package com.orailnoor.droiddesk.view
 
 import android.app.Activity
+import android.os.Build
 import android.os.Bundle
 import android.graphics.Color
 import android.view.Window
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.SurfaceHolder
 import android.view.ViewGroup
@@ -54,10 +57,7 @@ class DesktopActivity : Activity() {
         desktopEnv = intent.getStringExtra("de") ?: "xfce4"
 
         requestWindowFeature(Window.FEATURE_NO_TITLE)
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
+        enableImmersiveMode()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         placeholder = FrameLayout(this)
@@ -69,10 +69,47 @@ class DesktopActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enableImmersiveMode()
         if (hasFocus && !isSetupDone) {
             isSetupDone = true
             Log.i(TAG, "Window focused — setting up LorieView")
             setupLorieView()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enableImmersiveMode()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun enableImmersiveMode() {
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.apply {
+                hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            )
+            window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         }
     }
 
@@ -214,17 +251,17 @@ class DesktopActivity : Activity() {
         val overlayParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP or Gravity.START,
+            Gravity.TOP or Gravity.END,
         ).apply {
-            leftMargin = (8 * density).toInt()
+            rightMargin = (8 * density).toInt()
             topMargin = (52 * density).toInt()
         }
         val collapsedParams = FrameLayout.LayoutParams(
             (48 * density).toInt(),
             (42 * density).toInt(),
-            Gravity.TOP or Gravity.START,
+            Gravity.TOP or Gravity.END,
         ).apply {
-            leftMargin = overlayParams.leftMargin
+            rightMargin = overlayParams.rightMargin
             topMargin = overlayParams.topMargin
         }
 
