@@ -1,9 +1,12 @@
 package com.orailnoor.droiddesk.view
 
 import android.app.Activity
+import android.app.role.RoleManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.graphics.Color
+import android.provider.Settings
 import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -22,6 +25,7 @@ import android.view.Gravity
 import android.content.res.ColorStateList
 import com.termux.x11.MainActivity as TermuxMainActivity
 import com.termux.x11.LorieView
+import com.orailnoor.droiddesk.MainActivity
 import com.orailnoor.droiddesk.runtime.LinuxRuntime
 import com.orailnoor.droiddesk.runtime.ChrootRuntime
 import com.orailnoor.droiddesk.x11.X11ServiceClient
@@ -46,15 +50,14 @@ class DesktopActivity : Activity() {
 
     companion object {
         private const val TAG = "DesktopActivity"
+        const val EXTRA_DESKTOP_ERROR = "desktopError"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         linuxRuntime = LinuxRuntime(this)
         chrootRuntime = ChrootRuntime(this)
-        shouldStartSession = intent.getBooleanExtra("startSession", false)
-        sessionMode = intent.getStringExtra("mode") ?: if (chrootRuntime.hasRoot()) "chroot" else "termux"
-        desktopEnv = intent.getStringExtra("de") ?: "xfce4"
+        applyIntentExtras(intent)
 
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -67,6 +70,23 @@ class DesktopActivity : Activity() {
         enableImmersiveMode()
 
         Log.i(TAG, "DesktopActivity created mode=$sessionMode startSession=$shouldStartSession")
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyIntentExtras(intent)
+        if (shouldStartSession && LorieView.connected()) {
+            startDesktopSessionIfRequested()
+        }
+    }
+
+    private fun applyIntentExtras(intent: Intent?) {
+        if (intent == null) return
+        shouldStartSession = intent.getBooleanExtra("startSession", false) || shouldStartSession
+        sessionMode = intent.getStringExtra("mode")
+            ?: if (chrootRuntime.hasRoot()) "chroot" else "termux"
+        desktopEnv = intent.getStringExtra("de") ?: desktopEnv.ifEmpty { "xfce4" }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -82,6 +102,11 @@ class DesktopActivity : Activity() {
     override fun onResume() {
         super.onResume()
         enableImmersiveMode()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // Home-launcher surface: do not finish into a blank task.
     }
 
     @Suppress("DEPRECATION")
@@ -222,6 +247,17 @@ class DesktopActivity : Activity() {
                 Toast.makeText(this@DesktopActivity, "Input mode: $text", Toast.LENGTH_SHORT).show()
             }
         }
+        val dashboardButton = controlButton("Dashboard").apply {
+            setOnClickListener { openFlutterDashboard() }
+            setOnLongClickListener {
+                openHomeSettings()
+                true
+            }
+        }
+        val androidButton = controlButton("Android").apply {
+            contentDescription = "Change default home app"
+            setOnClickListener { openHomeSettings() }
+        }
         val hideButton = controlButton("−").apply {
             contentDescription = "Hide desktop controls"
             setOnClickListener { setControlsCollapsed(true) }
@@ -238,6 +274,12 @@ class DesktopActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT, (42 * density).toInt(),
             ))
             addView(inputModeButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, (42 * density).toInt(),
+            ))
+            addView(dashboardButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, (42 * density).toInt(),
+            ))
+            addView(androidButton, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, (42 * density).toInt(),
             ))
             addView(hideButton, LinearLayout.LayoutParams(
@@ -276,6 +318,34 @@ class DesktopActivity : Activity() {
             setControlsCollapsed(false)
         })
         controlOverlay?.bringToFront()
+    }
+
+    private fun openFlutterDashboard() {
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            },
+        )
+    }
+
+    private fun openHomeSettings() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val roleManager = getSystemService(RoleManager::class.java)
+                if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                    startActivity(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                    return
+                }
+            }
+            startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to open home settings", error)
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            } catch (_: Throwable) {
+                Toast.makeText(this, "Open Settings → Apps → Default home", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun dragListener(target: View, onTap: (() -> Unit)? = null): View.OnTouchListener {
@@ -335,9 +405,21 @@ class DesktopActivity : Activity() {
         }
     }
 
+    private fun isSessionRunning(): Boolean {
+        return if (sessionMode == "chroot") {
+            chrootRuntime.isRunning()
+        } else {
+            linuxRuntime.isRunning()
+        }
+    }
+
     private fun startDesktopSessionIfRequested() {
         if (!shouldStartSession) return
         shouldStartSession = false
+        if (isSessionRunning()) {
+            Log.i(TAG, "Desktop session already running — skipping restart")
+            return
+        }
         Thread({
             Log.i(TAG, "Starting Linux desktop session after X server connection")
             try {
@@ -348,13 +430,28 @@ class DesktopActivity : Activity() {
                 }
             } catch (error: Throwable) {
                 Log.e(TAG, "Desktop session failed", error)
+                fallbackToFlutter("Desktop session failed: ${error.message ?: error.javaClass.simpleName}")
             }
         }, "LinuxDesktopSession").start()
     }
 
     private fun showX11Error(message: String, error: Throwable?) {
         Log.e(TAG, message, error)
+        val detail = if (error != null) "$message (${error.message ?: error.javaClass.simpleName})" else message
         Toast.makeText(this, "X11 Error: $message", Toast.LENGTH_LONG).show()
+        fallbackToFlutter(detail)
+    }
+
+    private fun fallbackToFlutter(message: String) {
+        runOnUiThread {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    putExtra(EXTRA_DESKTOP_ERROR, message)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                },
+            )
+            finish()
+        }
     }
 
     override fun onDestroy() {

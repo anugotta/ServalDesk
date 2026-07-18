@@ -1,15 +1,18 @@
-# DroidDesk
+# DroidDesk Launcher
 
 Run a full Linux desktop on any Android phone. Not a terminal. Not an emulator. A complete desktop environment with direct kernel access -- VS Code, Blender, Metasploit, local AI, all of it.
 
 Connect your phone to a monitor and it becomes a Linux PC. Unplug it and your entire setup comes with you.
+
+**This repository** (`DroidDeskLauncher`) adds an optional **Android home launcher** mode so boot and the Home button can open the Linux desktop directly, with a Flutter setup/dashboard fallback.
 
 > [!IMPORTANT]
 > DroidDesk is an independent GPL-3.0 open-source project that incorporates
 > modified Termux:X11 components. It is not affiliated with or endorsed by
 > Termux, Termux:X11, TUR, Canonical, or Ubuntu.
 >
-> - **Source and licenses:** <https://github.com/orailnoor/DroidDesk>
+> - **This fork (launcher):** <https://github.com/anugotta/DroidDeskLauncher>
+> - **Upstream project:** <https://github.com/orailnoor/DroidDesk>
 > - **Termux:X11 upstream:** <https://github.com/termux/termux-x11>
 
 ## Video
@@ -43,17 +46,41 @@ The automatic menu sync scans what you install inside Proot and adds it directly
 DroidDesk is also available as a standalone Android application that completely automates this process without requiring a separate Termux installation. It renders through an embedded Termux:X11 server running in its own Android process; the app does not use VNC.
 
 - **Rooted phones:** Run the Ubuntu filesystem through `chroot`.
-- **Non-rooted phones:** Run an app-private native Termux userspace and install desktop packages from the X11 and TUR repositories. PRoot is not used.
+- **Non-rooted phones:** Run an app-private native Termux userspace and install desktop packages from the X11 and TUR repositories. PRoot is not used for the main desktop path.
 - **Rendering:** Both modes connect directly to the embedded X11 server on `DISPLAY=:0`. Adreno devices use Turnip/Zink hardware acceleration when available; other GPUs fall back to Mesa software rendering.
 - **Automated setup:** The app extracts the bundled ARM64 Termux bootstrap, configures its private package prefix, and installs the selected desktop automatically.
 
 Download the latest release APK from the Releases tab and sideload it to begin.
 
+### Home launcher mode (optional)
+
+After setup, you can set DroidDesk as the **default Android home app**:
+
+1. Complete the in-app setup wizard (or open DroidDesk from the app drawer).
+2. On the dashboard, choose **Set as Default Launcher** (or accept the one-time prompt after setup).
+3. Confirm DroidDesk in the system home-app picker.
+
+Then:
+
+| Action | Result |
+|--------|--------|
+| Boot / press Home | Opens the Linux desktop when setup is complete |
+| Setup incomplete or desktop failure | Falls back to the Flutter dashboard |
+| Overlay **Dashboard** | Returns to the Flutter UI (apps, terminal, settings) |
+| Overlay **Android** (or long-press Dashboard) | Opens the system home-app / role picker so you can switch back to One UI / stock launcher |
+
+Home mode does not change the desktop itself — it only controls **when** the Linux session opens. For everyday Android use with occasional Linux, leave the stock launcher as default and open DroidDesk from the app drawer.
+
+> [!TIP]
+> On Samsung / One UI, set DroidDesk battery usage to **Unrestricted** so the X11 session is less likely to be killed in the background.
+
 ## Requirements
 
 - Any Android phone (ARM64)
-- [Termux](https://f-droid.org/en/packages/com.termux/) (install from F-Droid, not Play Store)
-- [Termux-X11](https://github.com/termux/termux-x11/releases/tag/nightly) (for on-phone display)
+- [Termux](https://f-droid.org/en/packages/com.termux/) (install from F-Droid, not Play Store) — for the classic script path
+- [Termux-X11](https://github.com/termux/termux-x11/releases/tag/nightly) (for on-phone display) — for the classic script path
+
+The standalone APK embeds its own X11 server and does not require separate Termux:X11.
 
 ### For Monitor Output ( Optional )
 
@@ -73,21 +100,29 @@ The Pi connects to the phone via USB tethering, detects the phone's IP automatic
 
 ## Installation
 
-### Step 1: Install Termux
+### Standalone APK (recommended for launcher mode)
+
+1. Build or download `app-release.apk`.
+2. Sideload and open **DroidDesk**.
+3. Finish setup, then optionally set it as the default home app (see above).
+
+### Classic Termux path
+
+#### Step 1: Install Termux
 
 Download and install Termux from F-Droid:
 https://f-droid.org/en/packages/com.termux/
 
 Do NOT use the Play Store version. It is outdated and will not work.
 
-### Step 2: Install Termux-X11
+#### Step 2: Install Termux-X11
 
 Download the latest APK from:
 https://github.com/termux/termux-x11/releases/tag/nightly
 
 Install it on your phone. This is the display server that renders the desktop.
 
-### Step 3: Run the Setup Script
+#### Step 3: Run the Setup Script
 
 Open Termux and run:
 
@@ -107,7 +142,7 @@ The script will:
 8. Apply a modern dark theme
 9. Optionally set up VNC for remote access
 
-### Step 4: Start the Desktop
+#### Step 4: Start the Desktop
 
 After installation completes:
 
@@ -117,7 +152,7 @@ bash ~/start-x11.sh
 
 Then open the Termux-X11 app on your phone. Your desktop is ready.
 
-### Step 5: Install Apps Inside Proot
+#### Step 5: Install Apps Inside Proot
 
 To install tools that are not in TUR:
 
@@ -198,18 +233,18 @@ Add this line:
 > On some Android versions (MIUI, One UI, stock Android 13+), the system may kill Termux background processes and drop your desktop session. To prevent this:
 > 1. Go to **Settings → Developer Options**
 > 2. Find **"Child process"** (may be labeled differently depending on your ROM)
-> 3. Disable child process restrictions for Termux
+> 3. Disable child process restrictions for Termux / DroidDesk
 >
 > Without this, long-running sessions (VNC, Termux-X11) may be killed by the OS without warning.
 
 - Termux-X11 directly on the phone is faster than VNC. Use VNC only when you need monitor output through the Pi bridge or remote access from another device.
-- For standalone phone use without a monitor, Termux-X11 is the recommended option.
+- For standalone phone use without a monitor, Termux-X11 (or the embedded X11 in the APK) is the recommended option.
 - The Proot container shares the display with the native Termux desktop. Apps installed in Proot render on the same screen.
 - GPU acceleration works best on Adreno GPUs (Qualcomm Snapdragon phones). Other GPUs fall back to software rendering.
 
 ## Credits
 
-Created by [orailnoor](https://youtube.com/@orailnoor)
+Created by [orailnoor](https://youtube.com/@orailnoor). Home launcher mode maintained in this fork.
 
 ## License and third-party software
 

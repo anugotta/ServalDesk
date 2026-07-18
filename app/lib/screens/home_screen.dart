@@ -9,12 +9,87 @@ import 'package:droiddesk/screens/apps/app_catalog_screen.dart';
 
 /// Home dashboard — shown after setup is complete.
 /// Central hub for launching the desktop, terminal, and managing the environment.
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _promptScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowErrorsAndHomePrompt();
+    });
+  }
+
+  void _maybeShowErrorsAndHomePrompt() {
+    if (!mounted) return;
+    final state = context.read<AppState>();
+
+    final error = state.errorMessage;
+    if (error != null && error.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: DroidTheme.error,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      state.clearError();
+    }
+
+    if (!_promptScheduled && state.shouldPromptDefaultHome && !state.isDefaultHome) {
+      _promptScheduled = true;
+      _showDefaultHomePrompt(state);
+    }
+  }
+
+  Future<void> _showDefaultHomePrompt(AppState state) async {
+    final setAsHome = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: DroidTheme.surface,
+        title: Text('Set as Home Launcher?', style: DroidTheme.headingSm),
+        content: Text(
+          'Make DroidDesk your default home app so the phone boots and returns Home directly into the Linux desktop.',
+          style: DroidTheme.bodySm,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Set as Home'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    if (setAsHome == true) {
+      await state.requestDefaultHome();
+    } else {
+      await state.markDefaultHomePromptShown();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+
+    // Re-check when state flips to "should prompt" after setup completes.
+    if (!_promptScheduled && state.shouldPromptDefaultHome && !state.isDefaultHome) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeShowErrorsAndHomePrompt();
+      });
+    }
 
     return Scaffold(
       body: Container(
@@ -214,6 +289,35 @@ class HomeScreen extends StatelessWidget {
                               builder: (_) => const AppCatalogScreen(),
                             ),
                           );
+                        },
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // ── Default home launcher ──
+                      _ActionCard(
+                        icon: state.isDefaultHome
+                            ? Icons.home_rounded
+                            : Icons.home_outlined,
+                        title: state.isDefaultHome
+                            ? 'Default Home Launcher'
+                            : 'Set as Default Launcher',
+                        subtitle: state.isDefaultHome
+                            ? 'Boot and Home open the Linux desktop'
+                            : 'Boot and Home will open the Linux desktop directly',
+                        color: DroidTheme.secondary,
+                        onTap: () async {
+                          if (state.isDefaultHome) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'DroidDesk is already the default home app.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          await state.requestDefaultHome();
                         },
                       ),
 
@@ -425,6 +529,15 @@ class HomeScreen extends StatelessWidget {
               subtitle: const Text('Disable to prevent session killing'),
               onTap: () {
                 DroidDeskPlatform.requestBatteryOptimization();
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.home_rounded, color: DroidTheme.primary),
+              title: const Text('Default Home App'),
+              subtitle: const Text('Change which app opens on Home / boot'),
+              onTap: () {
+                DroidDeskPlatform.requestDefaultHome();
                 Navigator.pop(context);
               },
             ),

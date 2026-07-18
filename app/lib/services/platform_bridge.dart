@@ -173,4 +173,20 @@ class DroidDeskPlatform {
     final result = await _channel.invokeMethod('isBatteryOptimized');
     return result as bool? ?? true;
   }
+
+  // ── Default home launcher ──
+
+  static Future<String?> getLaunchError() async {
+    final result = await _channel.invokeMethod('getLaunchError');
+    return result as String?;
+  }
+
+  static Future<bool> isDefaultHome() async {
+    final result = await _channel.invokeMethod('isDefaultHome');
+    return result as bool? ?? false;
+  }
+
+  static Future<void> requestDefaultHome() async {
+    await _channel.invokeMethod('requestDefaultHome');
+  }
 }

@@ -47,6 +47,15 @@ class ChrootRuntime(private val context: Context) {
                 File(rootfsDir, "usr/bin/startxfce4").exists()
     }
 
+    fun getInstalledDE(): String {
+        val marker = File(rootfsDir, CHROOT_DE_MARKER)
+        if (marker.exists()) {
+            return marker.readText().trim().ifEmpty { "xfce4" }
+        }
+        if (File(rootfsDir, "usr/bin/startxfce4").exists()) return "xfce4"
+        return ""
+    }
+
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
     fun getRootfsPath(): String = rootfsDir.absolutePath

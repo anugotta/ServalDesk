@@ -3,11 +3,13 @@ package com.orailnoor.droiddesk
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.app.role.RoleManager
 import android.content.Intent
 import android.os.Bundle
 import android.os.Build
 import android.os.PowerManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import com.orailnoor.droiddesk.service.DroidDeskService
@@ -15,6 +17,7 @@ import com.orailnoor.droiddesk.runtime.LinuxRuntime
 import com.orailnoor.droiddesk.runtime.ChrootRuntime
 import com.orailnoor.droiddesk.runtime.RootShell
 import com.orailnoor.droiddesk.view.AndroidSurfaceViewFactory
+import com.orailnoor.droiddesk.view.DesktopActivity
 import com.orailnoor.droiddesk.x11.X11ServerService
 import kotlin.concurrent.thread
 import android.util.Log
@@ -29,14 +32,29 @@ class MainActivity : FlutterActivity() {
 
     private lateinit var linuxRuntime: LinuxRuntime
     private lateinit var chrootRuntime: ChrootRuntime
+    private var pendingDesktopError: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         linuxRuntime = LinuxRuntime(this)
         chrootRuntime = ChrootRuntime(this)
+        captureDesktopError(intent)
 
         if (intent.getBooleanExtra("autoSetup", false)) {
             runAutoChrootSetup()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureDesktopError(intent)
+    }
+
+    private fun captureDesktopError(intent: Intent?) {
+        val error = intent?.getStringExtra(DesktopActivity.EXTRA_DESKTOP_ERROR)
+        if (!error.isNullOrBlank()) {
+            pendingDesktopError = error
         }
     }
 
@@ -139,7 +157,7 @@ class MainActivity : FlutterActivity() {
                         "hasRoot" to rooted,
                         "distro" to if (rooted) "ubuntu-chroot" else "termux-native",
                         "installedDE" to if (rooted) {
-                            if (chrootRuntime.isDesktopInstalled()) "xfce4" else ""
+                            chrootRuntime.getInstalledDE()
                         } else {
                             linuxRuntime.getInstalledDE()
                         },
@@ -471,6 +489,21 @@ class MainActivity : FlutterActivity() {
                     result.success(isBatteryOptimized())
                 }
 
+                "getLaunchError" -> {
+                    val error = pendingDesktopError
+                    pendingDesktopError = null
+                    result.success(error)
+                }
+
+                "isDefaultHome" -> {
+                    result.success(isDefaultHomeApp())
+                }
+
+                "requestDefaultHome" -> {
+                    requestDefaultHomeApp()
+                    result.success(true)
+                }
+
                 "setupBootstrap" -> {
                     if (chrootRuntime.hasRoot()) {
                         // Nothing to bootstrap for chroot; rootfs handles it
@@ -518,6 +551,43 @@ class MainActivity : FlutterActivity() {
                 data = Uri.parse("package:$packageName")
             }
             startActivity(intent)
+        }
+    }
+
+    // ── Default home launcher ──
+
+    private fun isDefaultHomeApp(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(RoleManager::class.java)
+            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                return roleManager.isRoleHeld(RoleManager.ROLE_HOME)
+            }
+        }
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val resolve = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        return resolve?.activityInfo?.packageName == packageName
+    }
+
+    private fun requestDefaultHomeApp() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val roleManager = getSystemService(RoleManager::class.java)
+                if (roleManager != null &&
+                    roleManager.isRoleAvailable(RoleManager.ROLE_HOME) &&
+                    !roleManager.isRoleHeld(RoleManager.ROLE_HOME)
+                ) {
+                    startActivity(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                    return
+                }
+            }
+            startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to request default home", error)
+            Toast.makeText(
+                this,
+                "Open Settings → Apps → Default apps → Home app",
+                Toast.LENGTH_LONG,
+            ).show()
         }
     }
 

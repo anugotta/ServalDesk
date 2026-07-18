@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:droiddesk/services/platform_bridge.dart';
 
 /// Central state management for the entire DroidDesk app.
 class AppState extends ChangeNotifier {
+  static const _homePromptShownKey = 'home_launcher_prompt_shown';
+
   // ── Setup State ──
   bool _isBootstrapped = false;
   bool _isRunning = false;
@@ -12,6 +15,8 @@ class AppState extends ChangeNotifier {
   String _selectedDistro = 'ubuntu';
   String _selectedDE = 'xfce4';
   int _setupStep = 0; // 0=welcome, 1=distro, 2=de, 3=install, 4=done
+  bool _isDefaultHome = false;
+  bool _shouldPromptDefaultHome = false;
 
   // ── Download/Install Progress ──
   double _downloadProgress = 0.0;
@@ -68,6 +73,8 @@ class AppState extends ChangeNotifier {
   String get optionalInstallStatus => _optionalInstallStatus;
   String get optionalInstallLog => _optionalInstallLog;
   bool get isProotTerminal => _isProotTerminal;
+  bool get isDefaultHome => _isDefaultHome;
+  bool get shouldPromptDefaultHome => _shouldPromptDefaultHome;
 
   bool get isSetupComplete => _isBootstrapped && _installedDE.isNotEmpty;
   bool get isDEInstalled => _installedDE.isNotEmpty;
@@ -164,6 +171,8 @@ class AppState extends ChangeNotifier {
 
     await refreshStatus();
     await loadDeviceInfo();
+    await _consumeLaunchError();
+    await refreshHomeLauncherStatus();
   }
 
   Future<void> refreshStatus() async {
@@ -184,6 +193,52 @@ class AppState extends ChangeNotifier {
       _errorMessage = 'Failed to get runtime status: $e';
       notifyListeners();
     }
+  }
+
+  Future<void> _consumeLaunchError() async {
+    try {
+      final error = await DroidDeskPlatform.getLaunchError();
+      if (error != null && error.isNotEmpty) {
+        _errorMessage = error;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Non-fatal
+    }
+  }
+
+  Future<void> refreshHomeLauncherStatus() async {
+    try {
+      _isDefaultHome = await DroidDeskPlatform.isDefaultHome();
+      if (isSetupComplete && !_isDefaultHome) {
+        final prefs = await SharedPreferences.getInstance();
+        _shouldPromptDefaultHome =
+            !(prefs.getBool(_homePromptShownKey) ?? false);
+      } else {
+        _shouldPromptDefaultHome = false;
+      }
+      notifyListeners();
+    } catch (_) {
+      // Non-fatal
+    }
+  }
+
+  Future<void> requestDefaultHome() async {
+    try {
+      await DroidDeskPlatform.requestDefaultHome();
+      await markDefaultHomePromptShown();
+      await refreshHomeLauncherStatus();
+    } catch (e) {
+      _errorMessage = 'Failed to open home settings: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> markDefaultHomePromptShown() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_homePromptShownKey, true);
+    _shouldPromptDefaultHome = false;
+    notifyListeners();
   }
 
   Future<void> loadDeviceInfo() async {
@@ -240,6 +295,13 @@ class AppState extends ChangeNotifier {
       }
 
       _setupStep = 4;
+      await refreshStatus();
+      // After first successful setup, offer to become the default home app.
+      final prefs = await SharedPreferences.getInstance();
+      if (!(prefs.getBool(_homePromptShownKey) ?? false)) {
+        _shouldPromptDefaultHome = true;
+      }
+      await refreshHomeLauncherStatus();
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Setup failed: $e';

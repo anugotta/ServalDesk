@@ -29,7 +29,23 @@
         android:largeHeap="true"
         android:enableOnBackInvokedCallback="true">
 
-        <!-- Main Flutter Activity -->
+        <!-- Home router: boot / Home → Linux desktop or Flutter setup -->
+        <activity
+            android:name=".LauncherRouterActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/RouterTheme"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Main Flutter Activity (app drawer + setup / dashboard fallback) -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -52,7 +68,8 @@
         <activity
             android:name=".view.DesktopActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
-            android:launchMode="singleTop"
+            android:exported="false"
+            android:launchMode="singleTask"
             android:taskAffinity=""
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
 

@@ -20,6 +20,9 @@ DroidDesk is an independent project. It is not affiliated with, sponsored by,
 or endorsed by Termux, the Termux:X11 project, TUR, Canonical, Ubuntu, or the
 upstream projects whose software it can install.
 
+This repository (`DroidDeskLauncher`) extends DroidDesk with an optional Android
+home-launcher entry point. Product branding remains DroidDesk.
+
 The names and marks of third parties belong to their respective owners and are
 used only to identify compatible software.
 
