@@ -14,7 +14,7 @@ class X11InputController(private val lorieView: LorieView) {
         InputEventSender(lorieView),
     )
 
-    var mode: Int = TouchInputHandler.InputMode.TRACKPAD
+    var mode: Int = TouchInputHandler.InputMode.TOUCH
         private set
 
     init {
@@ -29,9 +29,9 @@ class X11InputController(private val lorieView: LorieView) {
 
     fun nextMode(): Int {
         val next = when (mode) {
+            TouchInputHandler.InputMode.TOUCH -> TouchInputHandler.InputMode.TRACKPAD
             TouchInputHandler.InputMode.TRACKPAD -> TouchInputHandler.InputMode.SIMULATED_TOUCH
-            TouchInputHandler.InputMode.SIMULATED_TOUCH -> TouchInputHandler.InputMode.TOUCH
-            else -> TouchInputHandler.InputMode.TRACKPAD
+            else -> TouchInputHandler.InputMode.TOUCH
         }
         setMode(next)
         return next
@@ -61,6 +61,7 @@ class X11InputController(private val lorieView: LorieView) {
         inputHandler.handleTouchEvent(lorieView, view, event)
 
     companion object {
+        /** Keep 200 — changing this previously correlated with black screens on restart. */
         const val DISPLAY_SCALE_PERCENT = 200
 
         /** Must run before LorieView is measured so Xwayland starts at the scaled resolution. */

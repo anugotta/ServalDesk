@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.graphics.Color
+import android.graphics.Rect
 import android.provider.Settings
 import android.view.Window
 import android.view.WindowInsets
@@ -18,6 +19,7 @@ import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.util.Log
 import android.widget.Toast
 import android.widget.Button
@@ -28,6 +30,7 @@ import com.termux.x11.LorieView
 import com.orailnoor.droiddesk.MainActivity
 import com.orailnoor.droiddesk.runtime.LinuxRuntime
 import com.orailnoor.droiddesk.runtime.ChrootRuntime
+import com.orailnoor.droiddesk.service.DroidDeskService
 import com.orailnoor.droiddesk.x11.X11ServiceClient
 import com.orailnoor.droiddesk.x11.X11InputController
 
@@ -41,16 +44,21 @@ class DesktopActivity : Activity() {
     private lateinit var linuxRuntime: LinuxRuntime
     private lateinit var chrootRuntime: ChrootRuntime
     private lateinit var placeholder: FrameLayout
+    private lateinit var desktopSurface: FrameLayout
+    private var statusText: TextView? = null
     private var x11ServiceClient: X11ServiceClient? = null
     private var inputController: X11InputController? = null
     private var inputModeButton: Button? = null
     private var controlOverlay: LinearLayout? = null
     private var collapsedControl: Button? = null
     private var surfaceCallback: SurfaceHolder.Callback? = null
+    private var x11RetryUsed = false
 
     companion object {
         private const val TAG = "DesktopActivity"
         const val EXTRA_DESKTOP_ERROR = "desktopError"
+        /** Minimum black inset so rounded phone corners don't clip the desktop. */
+        private const val MIN_SAFE_INSET_DP = 18f
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,12 +70,45 @@ class DesktopActivity : Activity() {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        if (shouldStartSession) {
+            startLinuxForegroundService()
+        }
+
         placeholder = FrameLayout(this)
         placeholder.setBackgroundColor(Color.BLACK)
+        desktopSurface = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+        statusText = TextView(this).apply {
+            text = "Starting Linux desktop…"
+            setTextColor(Color.LTGRAY)
+            textSize = 14f
+            gravity = Gravity.CENTER
+        }
+        placeholder.addView(
+            desktopSurface,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            ),
+        )
+        placeholder.addView(
+            statusText,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            ),
+        )
         setContentView(placeholder)
-        // Some Android/LineageOS builds throw from PhoneWindow.getInsetsController
-        // until a decor view has been created by setContentView().
         enableImmersiveMode()
+        applySafeAreaInsets()
+
+        // Do NOT wait only for window focus — home/boot launch can stay unfocused
+        // briefly and previously left users on a permanent black screen.
+        placeholder.post { ensureLorieSetup("onCreate-post") }
+        placeholder.postDelayed({ ensureLorieSetup("onCreate-delayed") }, 700)
 
         Log.i(TAG, "DesktopActivity created mode=$sessionMode startSession=$shouldStartSession")
     }
@@ -91,17 +132,25 @@ class DesktopActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) enableImmersiveMode()
-        if (hasFocus && !isSetupDone) {
-            isSetupDone = true
-            Log.i(TAG, "Window focused — setting up LorieView")
-            setupLorieView()
+        if (hasFocus) {
+            enableImmersiveMode()
+            applySafeAreaInsets()
+            ensureLorieSetup("window-focus")
         }
     }
 
     override fun onResume() {
         super.onResume()
         enableImmersiveMode()
+        applySafeAreaInsets()
+        ensureLorieSetup("onResume")
+    }
+
+    private fun ensureLorieSetup(reason: String) {
+        if (isSetupDone || isFinishing) return
+        isSetupDone = true
+        Log.i(TAG, "Setting up LorieView ($reason)")
+        setupLorieView()
     }
 
     @Deprecated("Deprecated in Java")
@@ -140,47 +189,80 @@ class DesktopActivity : Activity() {
         }
     }
 
-    private fun setupLorieView() {
-        Log.i(TAG, "Setting up LorieView")
-        X11InputController.configureDisplayScale()
-        TermuxMainActivity.getInstance().initLorieView(this)
-        lorieView = TermuxMainActivity.getInstance().lorieView
-
-        // Keep Android overlay controls above the X11 SurfaceView.
-        lorieView!!.setZOrderOnTop(false)
-        placeholder.setBackgroundColor(Color.BLACK)
-
-        val params = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        )
-        // TermuxMainActivity retains its LorieView singleton across activity
-        // recreation. Detach it from the previous activity's container before
-        // attaching it here, otherwise Android throws "child already has a parent".
-        (lorieView!!.parent as? ViewGroup)?.removeView(lorieView)
-        placeholder.addView(lorieView, params)
-        Log.i(TAG, "LorieView added to placeholder")
-
-        // Start X server only after the Surface is actually created/changed.
-        surfaceCallback = object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                Log.i(TAG, "LorieView surfaceCreated")
+    private fun applySafeAreaInsets() {
+        val density = resources.displayMetrics.density
+        val minInset = (MIN_SAFE_INSET_DP * density).toInt()
+        val cutout = Rect()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val insets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                window.decorView.rootWindowInsets
+            } else {
+                null
             }
+            val displayCutout = insets?.displayCutout
+            if (displayCutout != null) {
+                cutout.set(
+                    displayCutout.safeInsetLeft,
+                    displayCutout.safeInsetTop,
+                    displayCutout.safeInsetRight,
+                    displayCutout.safeInsetBottom,
+                )
+            }
+        }
+        val left = maxOf(minInset, cutout.left)
+        val top = maxOf(minInset, cutout.top)
+        val right = maxOf(minInset, cutout.right)
+        val bottom = maxOf(minInset, cutout.bottom)
 
-            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                Log.i(TAG, "LorieView surfaceChanged ${width}x${height}")
-                synchronized(this@DesktopActivity) {
-                    if (!connectionRequested) {
-                        connectionRequested = true
-                        connectToX11Service()
+        val lp = desktopSurface.layoutParams as FrameLayout.LayoutParams
+        lp.setMargins(left, top, right, bottom)
+        desktopSurface.layoutParams = lp
+        // Outer placeholder stays black → visible border around the Linux surface.
+        placeholder.setBackgroundColor(Color.BLACK)
+    }
+
+    private fun setupLorieView() {
+        try {
+            X11InputController.configureDisplayScale()
+            TermuxMainActivity.getInstance().initLorieView(this)
+            lorieView = TermuxMainActivity.getInstance().lorieView
+
+            lorieView!!.setZOrderOnTop(false)
+            desktopSurface.setBackgroundColor(Color.BLACK)
+
+            val params = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            )
+            (lorieView!!.parent as? ViewGroup)?.removeView(lorieView)
+            desktopSurface.addView(lorieView, params)
+            statusText?.text = "Connecting display…"
+            Log.i(TAG, "LorieView added to safe-area surface")
+
+            surfaceCallback = object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    Log.i(TAG, "LorieView surfaceCreated")
+                }
+
+                override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                    Log.i(TAG, "LorieView surfaceChanged ${width}x${height}")
+                    if (width <= 0 || height <= 0) return
+                    synchronized(this@DesktopActivity) {
+                        if (!connectionRequested) {
+                            connectionRequested = true
+                            connectToX11Service()
+                        }
                     }
                 }
-            }
 
-            override fun surfaceDestroyed(holder: SurfaceHolder) {
-                Log.i(TAG, "LorieView surfaceDestroyed")
-            }
-        }.also { lorieView!!.holder.addCallback(it) }
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    Log.i(TAG, "LorieView surfaceDestroyed")
+                }
+            }.also { lorieView!!.holder.addCallback(it) }
+        } catch (error: Throwable) {
+            Log.e(TAG, "setupLorieView failed", error)
+            showX11Error("Failed to create desktop surface", error)
+        }
     }
 
     private fun connectToX11Service() {
@@ -196,7 +278,7 @@ class DesktopActivity : Activity() {
                     LorieView.connect(connectionFd.detachFd())
                     logcatFd?.let { LorieView.startLogcat(it.detachFd()) }
                     Log.i(TAG, "LorieView connected to the :x11 service process")
-
+                    runOnUiThread { statusText?.visibility = View.GONE }
                     attachDesktopInput()
                 } catch (error: Throwable) {
                     connectionFd.close()
@@ -204,7 +286,21 @@ class DesktopActivity : Activity() {
                     showX11Error("Failed to attach LorieView to the X11 service", error)
                 }
             },
-            onError = ::showX11Error,
+            onError = { message, error ->
+                if (!x11RetryUsed) {
+                    x11RetryUsed = true
+                    Log.w(TAG, "X11 connect failed once, retrying: $message", error)
+                    runOnUiThread {
+                        statusText?.text = "Retrying display…"
+                        connectionRequested = false
+                        placeholder.postDelayed({
+                            if (!LorieView.connected()) connectToX11Service()
+                        }, 800)
+                    }
+                } else {
+                    showX11Error(message, error)
+                }
+            },
         ).also { it.connect() }
     }
 
@@ -240,10 +336,10 @@ class DesktopActivity : Activity() {
         val keyboardButton = controlButton("Keyboard").apply {
             setOnClickListener { showKeyboard() }
         }
-        inputModeButton = controlButton(inputController?.modeLabel() ?: "Trackpad").apply {
+        inputModeButton = controlButton(inputController?.modeLabel() ?: "Direct touch").apply {
             setOnClickListener {
                 inputController?.nextMode()
-                text = inputController?.modeLabel() ?: "Trackpad"
+                text = inputController?.modeLabel() ?: "Direct touch"
                 Toast.makeText(this@DesktopActivity, "Input mode: $text", Toast.LENGTH_SHORT).show()
             }
         }
@@ -289,8 +385,6 @@ class DesktopActivity : Activity() {
 
         collapsedControl = controlButton("☰").apply {
             contentDescription = "Show desktop controls"
-            // Keep this measured so switching from a dragged full overlay can
-            // copy absolute coordinates without placing the restore handle off-screen.
             visibility = View.INVISIBLE
         }
 
@@ -418,6 +512,7 @@ class DesktopActivity : Activity() {
         shouldStartSession = false
         if (isSessionRunning()) {
             Log.i(TAG, "Desktop session already running — skipping restart")
+            runOnUiThread { statusText?.visibility = View.GONE }
             return
         }
         Thread({
@@ -428,6 +523,7 @@ class DesktopActivity : Activity() {
                 } else {
                     linuxRuntime.startSession(desktopEnv, "x11")
                 }
+                runOnUiThread { statusText?.visibility = View.GONE }
             } catch (error: Throwable) {
                 Log.e(TAG, "Desktop session failed", error)
                 fallbackToFlutter("Desktop session failed: ${error.message ?: error.javaClass.simpleName}")
@@ -451,6 +547,19 @@ class DesktopActivity : Activity() {
                 },
             )
             finish()
+        }
+    }
+
+    private fun startLinuxForegroundService() {
+        try {
+            val intent = Intent(this, DroidDeskService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (error: Throwable) {
+            Log.w(TAG, "Could not start DroidDeskService", error)
         }
     }
 

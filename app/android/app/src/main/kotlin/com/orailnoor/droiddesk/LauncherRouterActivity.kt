@@ -2,10 +2,12 @@ package com.orailnoor.droiddesk
 
 import android.app.Activity
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import com.orailnoor.droiddesk.runtime.ChrootRuntime
 import com.orailnoor.droiddesk.runtime.LinuxRuntime
+import com.orailnoor.droiddesk.service.DroidDeskService
 import com.orailnoor.droiddesk.view.DesktopActivity
 
 /**
@@ -47,6 +49,9 @@ class LauncherRouterActivity : Activity() {
             }
             val mode = if (rooted) "chroot" else "termux"
             Log.i(TAG, "Setup complete — launching desktop mode=$mode de=$desktopEnv")
+            // Keep Linux processes alive before the desktop surface comes up.
+            // Missing this on cold boot was a common cause of a stuck black screen.
+            startLinuxForegroundService()
             startActivity(
                 Intent(this, DesktopActivity::class.java).apply {
                     putExtra("startSession", true)
@@ -64,5 +69,18 @@ class LauncherRouterActivity : Activity() {
             )
         }
         finish()
+    }
+
+    private fun startLinuxForegroundService() {
+        try {
+            val intent = Intent(this, DroidDeskService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (error: Throwable) {
+            Log.w(TAG, "Could not start DroidDeskService", error)
+        }
     }
 }

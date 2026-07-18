@@ -1465,6 +1465,7 @@ class LinuxRuntime(private val context: Context) {
                     homeDir,
                     ".local/share/backgrounds/droiddesk-ubuntu-touch.jpg",
                 ),
+                binDir = binDir,
             )
         }
 
