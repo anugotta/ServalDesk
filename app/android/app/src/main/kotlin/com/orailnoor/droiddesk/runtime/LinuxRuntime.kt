@@ -1335,7 +1335,7 @@ class LinuxRuntime(private val context: Context) {
             "lxqt" -> "lxqt qterminal pcmanfm-qt featherpad"
             "mate" -> "mate mate-terminal"
             "kde" -> "plasma-desktop konsole dolphin"
-            else -> "xfce4 xfce4-terminal xfce4-whiskermenu-plugin xfce4-notifyd thunar mousepad"
+            else -> "xfce4 xfce4-terminal xfce4-whiskermenu-plugin xfce4-notifyd thunar mousepad wmctrl"
         }
         if (!installPackageGroup("pkg install -y $desktopPackages")) {
             Log.e(TAG, "$selectedDesktop package install failed")

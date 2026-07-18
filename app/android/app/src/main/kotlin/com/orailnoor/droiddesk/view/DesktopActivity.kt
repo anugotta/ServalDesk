@@ -220,17 +220,22 @@ class DesktopActivity : Activity() {
     private fun resizeLinuxWindowsToFit() {
         if (!isSessionRunning()) return
         Thread({
+            // Do NOT run `xfce4-panel -r` — on this Termux/X11 stack it fails with
+            // GDBus ServiceUnknown and pops modal error dialogs on rotate.
             val script = """
                 export DISPLAY=:0
-                # Let the X server finish applying the new root size first.
-                sleep 0.25
-                xfce4-panel -r >/dev/null 2>&1 || true
+                sleep 0.35
+                # Prefer wmctrl maximize so windows follow the new root size.
                 if command -v wmctrl >/dev/null 2>&1; then
                   wmctrl -l 2>/dev/null | awk '{print ${'$'}1}' | while read -r id; do
                     [ -n "${'$'}id" ] || continue
+                    # Skip desktop/panel windows if wmctrl lists them.
                     wmctrl -i -r "${'$'}id" -b add,maximized_vert,maximized_horz >/dev/null 2>&1 || true
                   done
-                elif command -v xdotool >/dev/null 2>&1 && command -v xdpyinfo >/dev/null 2>&1; then
+                  exit 0
+                fi
+                # Fallback: move/resize visible clients to the current X screen.
+                if command -v xdotool >/dev/null 2>&1 && command -v xdpyinfo >/dev/null 2>&1; then
                   dim=${'$'}(xdpyinfo 2>/dev/null | awk '/dimensions/{print ${'$'}2}')
                   w=${'$'}{dim%x*}
                   h=${'$'}{dim#*x}
