@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:droiddesk/theme/droid_theme.dart';
-import 'package:droiddesk/screens/setup/install_type_picker.dart';
+import 'package:droiddesk/screens/setup/de_picker.dart';
 
 /// Welcome screen — first thing the user sees.
 /// Premium, animated landing with the DroidDesk brand.
@@ -113,7 +113,7 @@ class WelcomeScreen extends StatelessWidget {
                             ),
                             _featureChip(
                               Icons.security_rounded,
-                              'No Root Needed',
+                              'Root Optional',
                             ),
                             _featureChip(
                               Icons.desktop_mac_rounded,
@@ -141,7 +141,7 @@ class WelcomeScreen extends StatelessWidget {
                             PageRouteBuilder(
                               pageBuilder:
                                   (context, animation, secondaryAnimation) =>
-                                      const InstallTypePickerScreen(),
+                                      const DEPickerScreen(),
                               transitionsBuilder:
                                   (
                                     context,
@@ -183,7 +183,7 @@ class WelcomeScreen extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Install Ubuntu',
+                              'Set Up Desktop Essentials',
                               style: DroidTheme.headingSm.copyWith(
                                 color: Colors.white,
                               ),
@@ -226,7 +226,10 @@ class WelcomeScreen extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: DroidTheme.bodySm.copyWith(color: DroidTheme.textSecondary),
+            style: DroidTheme.bodySm.copyWith(
+              color: DroidTheme.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

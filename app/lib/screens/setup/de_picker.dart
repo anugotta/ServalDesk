@@ -5,7 +5,7 @@ import 'package:droiddesk/theme/droid_theme.dart';
 import 'package:droiddesk/state/app_state.dart';
 import 'package:droiddesk/screens/setup/setup_progress.dart';
 
-/// Desktop Environment picker — step 2 of setup wizard.
+/// Desktop Environment picker — the only choice before Essentials setup.
 class DEPickerScreen extends StatelessWidget {
   const DEPickerScreen({super.key});
 
@@ -13,7 +13,8 @@ class DEPickerScreen extends StatelessWidget {
     _DEOption(
       id: 'xfce4',
       name: 'XFCE4',
-      description: 'Fast, customizable, low resource usage. The best all-rounder.',
+      description:
+          'Fast, customizable, low resource usage. The best all-rounder.',
       ram: '~300 MB RAM',
       icon: Icons.grid_view_rounded,
       color: DroidTheme.secondary,
@@ -54,7 +55,9 @@ class DEPickerScreen extends StatelessWidget {
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: DroidTheme.backgroundGradient),
+        decoration: const BoxDecoration(
+          gradient: DroidTheme.backgroundGradient,
+        ),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -64,7 +67,7 @@ class DEPickerScreen extends StatelessWidget {
                 const SizedBox(height: 16),
 
                 // ── Step indicator ──
-                _buildStepIndicator(2, 3),
+                _buildStepIndicator(1, 2),
                 const SizedBox(height: 32),
 
                 Text('Choose Desktop', style: DroidTheme.headingXl)
@@ -74,17 +77,18 @@ class DEPickerScreen extends StatelessWidget {
 
                 const SizedBox(height: 8),
                 Text(
-                  'Pick your desktop environment. This affects look, feel, and resource usage.',
+                  'Desktop Essentials installs the selected desktop, terminal, file manager, and core tools. More apps can be added later.',
                   style: DroidTheme.bodyMd,
-                )
-                    .animate()
-                    .fadeIn(delay: 100.ms, duration: 400.ms),
+                ).animate().fadeIn(delay: 100.ms, duration: 400.ms),
 
                 // ── Device info hint ──
                 if (state.deviceInfo.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: DroidTheme.surfaceLight,
                       borderRadius: BorderRadius.circular(8),
@@ -92,20 +96,24 @@ class DEPickerScreen extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.phone_android, size: 14, color: DroidTheme.textMuted),
+                        const Icon(
+                          Icons.phone_android,
+                          size: 14,
+                          color: DroidTheme.textMuted,
+                        ),
                         const SizedBox(width: 8),
-                        Text(
-                          '${state.deviceInfo['brand']} ${state.deviceInfo['model']} · '
-                          '${state.deviceInfo['totalRamMB']} MB RAM · '
-                          '${state.gpuType}',
-                          style: DroidTheme.monoSm,
-                          overflow: TextOverflow.ellipsis,
+                        Expanded(
+                          child: Text(
+                            '${state.deviceInfo['brand']} ${state.deviceInfo['model']} · '
+                            '${state.deviceInfo['totalRamMB']} MB RAM · '
+                            '${state.gpuType}',
+                            style: DroidTheme.monoSm,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
-                  )
-                      .animate()
-                      .fadeIn(delay: 200.ms, duration: 400.ms),
+                  ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
                 ],
 
                 const SizedBox(height: 24),
@@ -114,16 +122,20 @@ class DEPickerScreen extends StatelessWidget {
                 Expanded(
                   child: ListView.separated(
                     itemCount: _desktops.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 10),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final de = _desktops[index];
                       final selected = state.selectedDE == de.id;
                       return _buildDECard(de, selected, () {
-                        state.setSelectedDE(de.id);
-                      }).animate().fadeIn(
-                        delay: Duration(milliseconds: 200 + index * 80),
-                        duration: 400.ms,
-                      ).slideY(begin: 0.08, duration: 400.ms);
+                            state.setSelectedDE(de.id);
+                          })
+                          .animate()
+                          .fadeIn(
+                            delay: Duration(milliseconds: 200 + index * 80),
+                            duration: 400.ms,
+                          )
+                          .slideY(begin: 0.08, duration: 400.ms);
                     },
                   ),
                 ),
@@ -142,23 +154,31 @@ class DEPickerScreen extends StatelessWidget {
                         onPressed: () {
                           Navigator.of(context).push(
                             PageRouteBuilder(
-                              pageBuilder: (context, animation, secondaryAnimation) =>
-                                  const SetupProgressScreen(),
-                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                );
-                              },
-                              transitionDuration:
-                                  const Duration(milliseconds: 300),
+                              pageBuilder:
+                                  (context, animation, secondaryAnimation) =>
+                                      const SetupProgressScreen(),
+                              transitionsBuilder:
+                                  (
+                                    context,
+                                    animation,
+                                    secondaryAnimation,
+                                    child,
+                                  ) {
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    );
+                                  },
+                              transitionDuration: const Duration(
+                                milliseconds: 300,
+                              ),
                             ),
                           );
                         },
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('Install'),
+                            Text('Install Essentials'),
                             SizedBox(width: 4),
                             Icon(Icons.download_rounded, size: 18),
                           ],
@@ -209,11 +229,17 @@ class DEPickerScreen extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(de.name, style: DroidTheme.headingSm.copyWith(fontSize: 15)),
+                      Text(
+                        de.name,
+                        style: DroidTheme.headingSm.copyWith(fontSize: 15),
+                      ),
                       if (de.recommended) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: DroidTheme.accent.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
@@ -272,8 +298,8 @@ class DEPickerScreen extends StatelessWidget {
               color: isCurrent
                   ? DroidTheme.primary
                   : isActive
-                      ? DroidTheme.primary.withValues(alpha: 0.5)
-                      : DroidTheme.surfaceBorder,
+                  ? DroidTheme.primary.withValues(alpha: 0.5)
+                  : DroidTheme.surfaceBorder,
               borderRadius: BorderRadius.circular(2),
             ),
           ),

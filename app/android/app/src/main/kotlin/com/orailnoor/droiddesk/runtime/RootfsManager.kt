@@ -14,8 +14,8 @@ import kotlin.concurrent.thread
  * Manages Linux rootfs downloads, extraction, and lifecycle.
  *
  * Rootfs images are standard arm64 Linux distributions downloaded from
- * official or community mirrors. These are real Ubuntu/Debian/Kali systems
- * that run inside proot — no Termux package repository needed.
+ * official or community mirrors. They are used only by DroidDesk's rooted
+ * chroot path; non-root devices use the native Termux/TUR runtime instead.
  *
  * Download flow:
  *   1. User selects distro in Flutter wizard
@@ -30,7 +30,7 @@ class RootfsManager(private val context: Context) {
         private const val BUFFER_SIZE = 8192
 
         // Official rootfs download URLs (arm64)
-        // These are minimal rootfs tarballs from proot-distro / official sources
+        // Minimal rootfs tarballs reused as rooted chroot filesystems.
         val DISTRO_URLS = mapOf(
             "ubuntu" to "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
             "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.0-aarch64.tar.gz",
@@ -58,6 +58,22 @@ class RootfsManager(private val context: Context) {
 
     fun getInstalledDE(): String {
         return if (deConfigFile.exists()) deConfigFile.readText().trim() else ""
+    }
+
+    fun getMissingPackages(): List<String> {
+        if (!isRootfsReady()) return listOf("rootfs")
+        val de = getInstalledDE().ifEmpty { "xfce4" }
+        val deBin = when (de) {
+            "lxqt" -> "usr/bin/lxqt-session"
+            "mate" -> "usr/bin/mate-session"
+            "kde" -> "usr/bin/startplasma-x11"
+            else -> "usr/bin/xfce4-session"
+        }
+        return if (File(rootfsDir, deBin).exists()) {
+            emptyList()
+        } else {
+            listOf(de)
+        }
     }
 
     fun getRootfsPath(): String {
@@ -370,7 +386,6 @@ class RootfsManager(private val context: Context) {
      */
     fun installDesktopEnvironment(
         de: String,
-        installType: String,
         runtime: LinuxRuntime,
         onProgress: (Double, String) -> Unit,
         onLog: (String) -> Unit
@@ -421,10 +436,6 @@ class RootfsManager(private val context: Context) {
                     else -> "xfce4 xfce4-terminal dbus-x11"
                 }
                 
-                if (installType == "full") {
-                    packages += " libreoffice gimp inkscape vlc audacity firefox code apt-transport-https"
-                }
-
                 // Fix broken dependencies from interrupted apt installs
                 runtime.executeCommand("DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -f -y", onLog)
 
@@ -433,30 +444,13 @@ class RootfsManager(private val context: Context) {
                     "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends $packages", onLog
                 )
 
-                onProgress(0.8, "Installing core utilities and VNC...")
+                onProgress(0.8, "Installing core utilities...")
                 val result = runtime.executeCommand(
                     "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
-                    "git wget curl python3 python3-pip htop nano sudo libgl1 tigervnc-standalone-server tigervnc-common tigervnc-tools x11-xserver-utils", onLog
+                    "git wget curl python3 python3-pip htop nano sudo libgl1 x11-xserver-utils", onLog
                 )
 
-                onProgress(0.9, "Configuring display server...")
-                runtime.executeCommand("""
-                    export PATH=${'$'}PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-                    mkdir -p ~/.vnc
-                    echo "password" | vncpasswd -f > ~/.vnc/passwd
-                    chmod 600 ~/.vnc/passwd
-                    
-                    cat << 'EOF' > ~/.vnc/xstartup
-                    #!/bin/sh
-                    export DISPLAY=:0
-                    export LIBGL_ALWAYS_SOFTWARE=1
-                    export GALLIUM_DRIVER=llvmpipe
-                    export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
-                    xrdb ${'$'}HOME/.Xresources || true
-                    exec startxfce4
-                    EOF
-                    chmod +x ~/.vnc/xstartup
-                """.trimIndent(), onLog)
+                onProgress(0.9, "Configuring embedded X11 display...")
                 
                 if (result.contains("E: ")) {
                     throw Exception("Apt-get failed: Check terminal output.")

@@ -32,11 +32,12 @@ The automatic menu sync scans what you install inside Proot and adds it directly
 
 ## DroidDesk App (Standalone)
 
-DroidDesk is also available as a standalone Android application that completely automates this process without requiring Termux. It bundles a containerized Linux root filesystem and uses an integrated VNC client to render the desktop locally. 
+DroidDesk is also available as a standalone Android application that completely automates this process without requiring a separate Termux installation. It renders through an embedded Termux:X11 server running in its own Android process; the app does not use VNC.
 
-- **Automated Setup:** No scripts required. The app handles PRoot execution, filesystem downloads, and desktop configuration automatically.
-- **Out-of-the-box Execution:** Automated binary patching allows complex applications like VS Code to run flawlessly on unrooted devices.
-- **Limitations:** The standalone app currently relies entirely on `llvmpipe` (CPU-based software rendering) because Android's hardware isolation restricts direct `/dev/dri/` GPU access. While highly optimized, graphical applications are bound by your CPU's capabilities.
+- **Rooted phones:** Run the Ubuntu filesystem through `chroot`.
+- **Non-rooted phones:** Run an app-private native Termux userspace and install desktop packages from the X11 and TUR repositories. PRoot is not used.
+- **Rendering:** Both modes connect directly to the embedded X11 server on `DISPLAY=:0`. Adreno devices use Turnip/Zink hardware acceleration when available; other GPUs fall back to Mesa software rendering.
+- **Automated setup:** The app extracts the bundled ARM64 Termux bootstrap, configures its private package prefix, and installs the selected desktop automatically.
 
 Download the latest release APK from the Releases tab and sideload it to begin.
 
@@ -201,3 +202,21 @@ Add this line:
 ## Credits
 
 Created by [orailnoor](https://youtube.com/@orailnoor)
+
+## License and third-party software
+
+DroidDesk is independent software licensed under
+[GNU GPL version 3 only](LICENSE). It is not affiliated with or endorsed by
+Termux, Termux:X11, TUR, Canonical, Ubuntu, or other upstream projects.
+
+The Android application incorporates GPL-licensed Termux:X11 components and
+bundles other third-party software under their respective licenses. See:
+
+- [Notices and attribution](NOTICE.md)
+- [Third-party software inventory](THIRD_PARTY_NOTICES.md)
+- [Release compliance status](COMPLIANCE.md)
+
+The current compliance checklist includes unresolved source provenance,
+reproducible-build, custom-prefix bootstrap, and wallpaper-license work. Do not
+describe a binary release as fully compliant until the blocking checklist items
+are complete.

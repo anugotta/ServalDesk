@@ -14,6 +14,10 @@ public class MainActivity extends Activity {
     public static final String ACTION_CUSTOM = "com.termux.x11.ACTION_CUSTOM";
     
     private LorieView lorieView;
+    public interface KeyHandler {
+        boolean handle(KeyEvent event);
+    }
+    private KeyHandler keyHandler;
 
     public boolean useTermuxEKBarBehaviour = false;
     public static class DummyExtraKeys {
@@ -34,7 +38,7 @@ public class MainActivity extends Activity {
             attachBaseContext(context);
         }
         if (lorieView == null) {
-            lorieView = new LorieView(this);
+            lorieView = new LorieView(context);
         }
     }
 
@@ -81,11 +85,31 @@ public class MainActivity extends Activity {
     }
     
     public boolean handleKey(KeyEvent event) {
-        return false;
+        // Let Android dismiss the soft keyboard and handle system navigation.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK)
+            return false;
+        return keyHandler != null && keyHandler.handle(event);
+    }
+
+    public void setKeyHandler(KeyHandler handler) {
+        keyHandler = handler;
     }
 
     // JNI STUBS
-    public void clientConnectedStateChanged() {}
+    public void clientConnectedStateChanged() {
+        android.util.Log.e("MainActivity", "clientConnectedStateChanged called by native code!");
+        if (lorieView != null) {
+            handler.postDelayed(() -> {
+                android.util.Log.e("MainActivity", "Executing triggerCallback from MainActivity handler!");
+                lorieView.triggerCallback();
+            }, 200);
+            handler.postDelayed(() -> lorieView.triggerCallback(), 500);
+            handler.postDelayed(() -> lorieView.triggerCallback(), 1000);
+            handler.postDelayed(() -> lorieView.triggerCallback(), 2000);
+        } else {
+            android.util.Log.e("MainActivity", "lorieView is NULL in MainActivity!");
+        }
+    }
     public void showToast(String text) {}
     public void updateNotification() {}
 }

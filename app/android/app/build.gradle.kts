@@ -10,6 +10,10 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    buildFeatures {
+        aidl = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -34,7 +38,13 @@ android {
 
     buildTypes {
         release {
+            // GitHub-distributed testing builds intentionally use Android's
+            // debug key so release APKs are directly installable.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
@@ -49,6 +59,10 @@ android {
     lint {
         abortOnError = false
         checkReleaseBuilds = false
+    }
+
+    packaging {
+        jniLibs.useLegacyPackaging = true
     }
 }
 

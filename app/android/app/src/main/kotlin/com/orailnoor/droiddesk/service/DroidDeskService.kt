@@ -18,7 +18,7 @@ import com.orailnoor.droiddesk.MainActivity
  * Foreground service that keeps the Linux runtime alive.
  *
  * Android aggressively kills background processes (especially Android 12+'s
- * Phantom Process Killer). This service ensures our proot session, desktop
+ * Phantom Process Killer). This service ensures our native Termux/chroot session, desktop
  * environment, and Wayland compositor survive when the user switches apps.
  */
 class DroidDeskService : Service() {

@@ -23,11 +23,11 @@
     <application
         android:label="DroidDesk"
         android:name="${applicationName}"
-        android:extractNativeLibs="true"
         android:icon="@mipmap/launcher_icon"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true"
-        android:largeHeap="true">
+        android:largeHeap="true"
+        android:enableOnBackInvokedCallback="true">
 
         <!-- Main Flutter Activity -->
         <activity
@@ -48,14 +48,22 @@
             </intent-filter>
         </activity>
 
-        <!-- Native Desktop Activity (Running in separate process to bypass Flutter's main thread) -->
+        <!-- Native Desktop Activity -->
         <activity
             android:name=".view.DesktopActivity"
-            android:process=":x11"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
 
-        <!-- Foreground Service: keeps proot + compositor alive -->
+        <!-- The native X server must have a different Linux process and FD table than LorieView. -->
+        <service
+            android:name=".x11.X11ServerService"
+            android:enabled="true"
+            android:exported="false"
+            android:process=":x11" />
+
+        <!-- Foreground Service: keeps the chroot or native Termux session alive -->
         <service
             android:name=".service.DroidDeskService"
             android:enabled="true"
