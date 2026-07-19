@@ -16,17 +16,23 @@ This repository (`DroidDeskLauncher`) builds on [upstream DroidDesk](https://git
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/01-linux-desktop.png" alt="Linux XFCE desktop in landscape with floating controls" width="100%"/>
+  <img src="docs/screenshots/01-linux-desktop.jpg" alt="Linux XFCE desktop in landscape with floating controls" width="100%"/>
   <br/>
-  <em>Linux desktop (XFCE) in landscape — bottom dock, floating bar, trackpad mode</em>
+  <em>Linux desktop (XFCE) in landscape — Unsplash wallpaper, bottom dock, floating bar, trackpad mode</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/04-linux-desktop-portrait.png" alt="Linux desktop in portrait" width="36%"/>
+  <img src="docs/screenshots/04-linux-desktop-portrait.jpg" alt="Linux desktop in portrait" width="36%"/>
   &nbsp;
   <img src="docs/screenshots/02-flutter-dashboard.png" alt="Flutter dashboard" width="36%"/>
   <br/>
   <em>Portrait desktop · Flutter dashboard (return, stop, set as default launcher)</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/05-vnc-share-session.jpg" alt="Desktop while sharing over VNC" width="100%"/>
+  <br/>
+  <em>Share VNC — live session on port 5901; switches to 1920×1080 for Mac / Pi / laptop viewers</em>
 </p>
 
 ## What’s new in this fork
@@ -47,18 +53,33 @@ Set DroidDesk as the default home app from the dashboard (**Set as Default Launc
 
 ### Phone desktop UX
 
-- **Bottom dock** — Applications menu, Terminal, Files, Browser (avoids icons hiding under a side panel)
+- **Bottom dock** — Applications menu, Terminal, Files, Browser, **VNC** (submenu: Share / Connect / Stop / Show IP)
+- **Applications menu** — same VNC helpers plus **Fit Windows to Screen**
 - **Top tasklist + clock** — Window list and readable clock on the dark panel
+- **Panel / menu contrast** — Light text and symbolic icons so menus stay readable on light popovers
+- **Wallpapers** — Bundled Unsplash desktop backgrounds (see `CREDITS.txt` in assets)
 - **Safe-area letterboxing** — Black borders so rounded corners / notches don’t clip the desktop
-- **Orientation** — Desktop resizes on rotate without breaking the XFCE panel
+- **Orientation** — Desktop resizes on rotate; windows rematch to the new viewport
 - **Direct touch / Trackpad / Touchscreen** — Floating bar cycles modes; **Trackpad is the default**
 - **Soft keyboard** — Floating **Keyboard** button (true text-field auto-IME isn’t available over X11)
+
+### VNC to Mac / Pi / laptop
+
+Phones without USB-C DisplayPort Alt Mode can share the live desktop over Wi‑Fi or USB tethering:
+
+1. On the dock, open **VNC** → **Share VNC**.
+2. The X display switches to **1920×1080** so viewers get a normal desktop (not a tiny phone-scaled frame).
+3. Connect from a VNC client (e.g. TigerVNC) to `PHONE_IP:5901` — use **Show IP** if needed.
+4. **Stop VNC Share** restores the phone-scaled layout.
+
+**Expect some lag over VNC** — the phone encodes a 1080p framebuffer. USB tethering is usually snappier than Wi‑Fi. Wired **USB-C HDMI / DeX** on DP Alt Mode phones is the lag-free path when the hardware supports it.
 
 ### Launch reliability
 
 - Foreground service starts before the desktop session where needed
 - X11 / Lorie surface starts without waiting only on focus (reduces black screens on Home / boot)
 - XFCE mobile profile installs atomically (marker written only after configs succeed)
+- Dock helper scripts use a real bash shebang (avoids Termux `#!/bin/sh` permission errors)
 - Avoids panel restart paths that triggered GDBus “Failed to restart the panel” dialogs
 
 > [!TIP]
@@ -100,8 +121,9 @@ If it runs on Ubuntu/Termux GUI packages, it can run here.
 
 | Path | When to use |
 |------|-------------|
-| USB-C HDMI / DeX | Phones with DisplayPort Alt Mode |
-| Raspberry Pi VNC bridge | Phones without wired display out (e.g. many mid-range USB 2.0 devices) — see [Pi bridge](#raspberry-pi-monitor-bridge) |
+| USB-C HDMI / DeX | Phones with DisplayPort Alt Mode — local scanout, essentially lag-free |
+| VNC (dock **Share VNC**) | Mac / laptop / any VNC viewer on the same network — some lag expected |
+| Raspberry Pi VNC bridge | Headless Pi tether + viewer — see [Pi bridge](#raspberry-pi-monitor-bridge) |
 
 ## Installation
 
@@ -150,20 +172,22 @@ If it runs on Ubuntu/Termux GUI packages, it can run here.
 
 ## Raspberry Pi monitor bridge
 
-For phones without USB-C display output, a Pi Zero 2W can tether over USB and show the phone desktop with a VNC viewer. Scripts: `pi-launch_phone.sh` (see upstream docs for flash / auto-boot notes). Prefer on-phone X11 when you are not using an external monitor.
+For phones without USB-C display output, a Pi Zero 2W can tether over USB and show the phone desktop with a VNC viewer. Scripts: `pi-launch_phone.sh` (see upstream docs for flash / auto-boot notes). Prefer on-phone X11 when you are not using an external monitor. The dock **Share VNC** path (1920×1080) works the same for a Pi viewer on the LAN.
 
 ## Notes
 
 > [!WARNING]
 > **Disable child-process restrictions** in Developer Options on ROMs that kill background processes (MIUI, One UI, stock Android 13+). Otherwise long-running X11 sessions may die without warning.
 
-- On-phone X11 is faster than VNC; use VNC for the Pi bridge or remote access.
+- On-phone X11 and USB-C external display are faster than VNC; use VNC for remote access or phones without wired video out.
 - GPU acceleration is strongest on Adreno (Snapdragon); other GPUs fall back to software rendering.
 - Electron/Chromium apps as root may need `--no-sandbox` — see [APP_TROUBLESHOOTING.md](APP_TROUBLESHOOTING.md).
 
 ## Credits
 
 Created by [orailnoor](https://youtube.com/@orailnoor). Home launcher mode and phone UX maintained in this fork ([anugotta/DroidDeskLauncher](https://github.com/anugotta/DroidDeskLauncher)).
+
+Bundled wallpapers: [Unsplash](https://unsplash.com) contributors — see `app/android/app/src/main/assets/droiddesk/wallpapers/CREDITS.txt`.
 
 ## License and third-party software
 

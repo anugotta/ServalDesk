@@ -102,6 +102,12 @@ class LinuxRuntime(private val context: Context) {
         return File(baseDir, BOOTSTRAP_MARKER).exists() && File(prefixDir, "bin/bash").exists()
     }
 
+    /** Refresh XFCE helper scripts / dock Exec lines without restarting the session. */
+    fun refreshDesktopHelpers() {
+        if (!isBootstrapped()) return
+        XfceMobileProfile.ensureHelpers(homeDir.apply { mkdirs() }, binDir)
+    }
+
     fun isRunning(): Boolean {
         return sessionProcess?.isAlive == true
     }
@@ -1341,6 +1347,12 @@ class LinuxRuntime(private val context: Context) {
             Log.e(TAG, "$selectedDesktop package install failed")
             return false
         }
+        // Optional VNC tools for dock shortcuts (Share / Connect). Soft-fail.
+        onProgress?.invoke(0.68, "Installing optional VNC tools...")
+        if (!installPackageGroup("pkg install -y x11vnc tigervnc-viewer")) {
+            Log.w(TAG, "Optional VNC packages unavailable; Share/Connect shortcuts will prompt to install later")
+            installPackageGroup("dpkg --configure -a")
+        }
         onProgress?.invoke(0.70, "Installing Mesa graphics packages...")
 
         // mesa-zink pulls the Vulkan loader selected by the active Termux repo.
@@ -1467,9 +1479,9 @@ class LinuxRuntime(private val context: Context) {
                 ),
                 binDir = binDir,
             )
-            // Always refresh the rotate/fit helper, even when the profile marker
-            // already exists from an earlier version.
-            XfceMobileProfile.ensureFitWindowsHelper(homeDir, binDir)
+            // Always refresh helper scripts / menu entries, even when the
+            // profile marker already exists from an earlier version.
+            XfceMobileProfile.ensureHelpers(homeDir, binDir)
         }
 
         // X11ServerService owns this socket. Never delete it from the client runtime.

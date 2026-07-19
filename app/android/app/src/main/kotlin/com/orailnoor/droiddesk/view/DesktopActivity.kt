@@ -28,6 +28,10 @@ import android.widget.Toast
 import android.widget.Button
 import android.view.Gravity
 import android.content.res.ColorStateList
+import android.os.FileObserver
+import android.os.Handler
+import android.os.Looper
+import java.io.File
 import com.termux.x11.MainActivity as TermuxMainActivity
 import com.termux.x11.LorieView
 import com.orailnoor.droiddesk.MainActivity
@@ -60,6 +64,15 @@ class DesktopActivity : Activity() {
     private var lastSurfaceW = 0
     private var lastSurfaceH = 0
     private var geometryChangeGeneration = 0
+    private var displayModeObserver: FileObserver? = null
+    private var lastDisplayMode: String = X11InputController.DISPLAY_MODE_PHONE
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val pollDisplayMode = object : Runnable {
+        override fun run() {
+            applyDisplayModeFromFlag(force = false)
+            mainHandler.postDelayed(this, 1500)
+        }
+    }
 
     companion object {
         private const val TAG = "DesktopActivity"
@@ -414,9 +427,80 @@ class DesktopActivity : Activity() {
         if (inputController == null) {
             inputController = X11InputController(lorieView!!)
         }
+        // Rewrite helper scripts / dock Exec lines (fixes Termux #!/bin/sh permission denied).
+        Thread({
+            try {
+                if (sessionMode == "chroot") chrootRuntime.refreshDesktopHelpers()
+                else linuxRuntime.refreshDesktopHelpers()
+            } catch (error: Throwable) {
+                Log.w(TAG, "refreshDesktopHelpers failed", error)
+            }
+        }, "RefreshDesktopHelpers").start()
+        startDisplayModeWatch()
         addDesktopControls()
         lorieView?.requestFocus()
         startDesktopSessionIfRequested()
+    }
+
+    private fun displayModeFile(): File =
+        File(filesDir, "home/.cache/${X11InputController.DISPLAY_MODE_FILENAME}")
+
+    private fun startDisplayModeWatch() {
+        displayModeFile().parentFile?.mkdirs()
+        applyDisplayModeFromFlag(force = true)
+        mainHandler.removeCallbacks(pollDisplayMode)
+        mainHandler.postDelayed(pollDisplayMode, 1500)
+
+        try {
+            @Suppress("DEPRECATION")
+            displayModeObserver?.stopWatching()
+            val dir = displayModeFile().parentFile ?: return
+            displayModeObserver = object : FileObserver(
+                dir.path,
+                FileObserver.CREATE or FileObserver.MODIFY or FileObserver.MOVED_TO or
+                    FileObserver.CLOSE_WRITE or FileObserver.DELETE,
+            ) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (path == null || path == X11InputController.DISPLAY_MODE_FILENAME ||
+                        event and FileObserver.DELETE != 0
+                    ) {
+                        mainHandler.post { applyDisplayModeFromFlag(force = false) }
+                    }
+                }
+            }.also { it.startWatching() }
+        } catch (error: Throwable) {
+            Log.w(TAG, "Display mode FileObserver unavailable; using poll only", error)
+        }
+    }
+
+    private fun applyDisplayModeFromFlag(force: Boolean) {
+        if (isFinishing || lorieView == null) return
+        val mode = try {
+            val file = displayModeFile()
+            if (!file.exists()) X11InputController.DISPLAY_MODE_PHONE
+            else file.readText().trim().lowercase().ifEmpty {
+                X11InputController.DISPLAY_MODE_PHONE
+            }
+        } catch (_: Exception) {
+            X11InputController.DISPLAY_MODE_PHONE
+        }
+        val normalized = when {
+            mode == X11InputController.DISPLAY_MODE_VNC || mode.startsWith("1920") ->
+                X11InputController.DISPLAY_MODE_VNC
+            else -> X11InputController.DISPLAY_MODE_PHONE
+        }
+        if (!force && normalized == lastDisplayMode) return
+        lastDisplayMode = normalized
+        Log.i(TAG, "Applying display mode=$normalized")
+        if (normalized == X11InputController.DISPLAY_MODE_VNC) {
+            X11InputController.applyVncDesktopPrefs()
+            Toast.makeText(this, "VNC desktop: 1920×1080", Toast.LENGTH_SHORT).show()
+        } else {
+            X11InputController.applyPhoneDisplayPrefs()
+        }
+        refreshX11Viewport("display-mode-$normalized")
+        desktopSurface.postDelayed({ resizeLinuxWindowsToFit() }, 500)
+        desktopSurface.postDelayed({ resizeLinuxWindowsToFit() }, 1200)
     }
 
     private fun addDesktopControls() {
@@ -723,6 +807,12 @@ class DesktopActivity : Activity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(pollDisplayMode)
+        try {
+            displayModeObserver?.stopWatching()
+        } catch (_: Throwable) {
+        }
+        displayModeObserver = null
         surfaceCallback?.let { callback -> lorieView?.holder?.removeCallback(callback) }
         surfaceCallback = null
         inputController?.dispose()

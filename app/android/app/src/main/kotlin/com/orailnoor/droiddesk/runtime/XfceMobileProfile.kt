@@ -14,7 +14,7 @@ import java.io.File
  */
 object XfceMobileProfile {
     private const val TAG = "XfceMobileProfile"
-    private const val PROFILE_MARKER = ".droiddesk-xfce-mobile-v14"
+    private const val PROFILE_MARKER = ".droiddesk-xfce-mobile-v19"
     private const val WALLPAPER_ASSET = "droiddesk/ubuntu-touch-wallpaper.jpg"
     private const val WALLPAPER_DIR_ASSET = "droiddesk/wallpapers"
 
@@ -46,10 +46,14 @@ object XfceMobileProfile {
 
             installPanelCss(homeDir)
             installGtkSettings(homeDir)
-            ensureFitWindowsHelper(homeDir, binDir)
-            cleanupAndroidAppsArtifacts(homeDir, binDir)
+            ensureHelpers(homeDir, binDir)
 
             val panelDir = File(homeDir, ".config/xfce4/panel")
+            val localBin = File(homeDir, ".local/bin")
+            val shell = resolveShell(binDir)
+            fun helperExec(name: String): String =
+                "\"$shell\" \"${File(localBin, name).absolutePath}\""
+
             writeLauncher(
                 File(panelDir, "launcher-21/droiddesk-terminal.desktop"),
                 name = "Terminal",
@@ -71,6 +75,38 @@ object XfceMobileProfile {
                 exec = "exo-open --launch WebBrowser %u",
                 icon = "org.xfce.webbrowser",
             )
+            writeLauncher(
+                File(panelDir, "launcher-26/droiddesk-vnc-share.desktop"),
+                name = "Share VNC",
+                comment = "Share this desktop to a Pi or laptop (port 5901)",
+                exec = helperExec("droiddesk-vnc-share"),
+                icon = "network-transmit-symbolic",
+            )
+            writeLauncher(
+                File(panelDir, "launcher-26/droiddesk-vnc-connect.desktop"),
+                name = "VNC Connect",
+                comment = "Connect to another computer via VNC",
+                exec = helperExec("droiddesk-vnc-connect"),
+                icon = "network-receive-symbolic",
+            )
+            writeLauncher(
+                File(panelDir, "launcher-26/droiddesk-vnc-stop.desktop"),
+                name = "Stop VNC Share",
+                comment = "Stop sharing this desktop over VNC",
+                exec = helperExec("droiddesk-vnc-stop"),
+                icon = "process-stop-symbolic",
+            )
+            writeLauncher(
+                File(panelDir, "launcher-26/droiddesk-show-ip.desktop"),
+                name = "Show IP",
+                comment = "Show this phone's IP addresses for VNC / SSH",
+                exec = helperExec("droiddesk-show-ip"),
+                icon = "network-workgroup-symbolic",
+            )
+            // Drop older per-action dock slots that crowded the panel.
+            File(panelDir, "launcher-28").deleteRecursively()
+            File(panelDir, "launcher-29").deleteRecursively()
+            cleanupAndroidAppsArtifacts(homeDir, binDir)
 
             homeDir.listFiles { file ->
                 file.isFile &&
@@ -78,7 +114,7 @@ object XfceMobileProfile {
                     file.name != PROFILE_MARKER
             }?.forEach { it.delete() }
             marker.writeText("1\n")
-            Log.i(TAG, "Installed XFCE mobile profile v14 in ${homeDir.absolutePath}")
+            Log.i(TAG, "Installed XFCE mobile profile v18 in ${homeDir.absolutePath}")
             true
         } catch (error: Exception) {
             Log.e(TAG, "Failed to install XFCE mobile profile — leaving previous config intact", error)
@@ -108,18 +144,141 @@ object XfceMobileProfile {
             ?: File(wallpaperDir, "ubuntu-touch.jpg")
     }
 
-    /** Shell helper used after rotate / X root resize to fit client windows. */
-    fun ensureFitWindowsHelper(homeDir: File, binDir: File? = null) {
-        val script = fitWindowsScript()
+    /**
+     * Install/refresh helper scripts + Applications menu entries.
+     * Safe to call on every session start (does not require a profile bump).
+     *
+     * Termux-style prefixes have no usable `/bin/sh`, so scripts must use the
+     * real bash under [binDir] and .desktop files must Exec that interpreter.
+     */
+    fun ensureHelpers(homeDir: File, binDir: File? = null) {
+        // Keep panel/menu contrast CSS current even when the profile marker exists.
+        installPanelCss(homeDir)
+        installGtkSettings(homeDir)
+
         val localBin = File(homeDir, ".local/bin").apply { mkdirs() }
-        File(localBin, "droiddesk-fit-windows").writeText(script)
-        File(localBin, "droiddesk-fit-windows").setExecutable(true, false)
-        binDir?.let {
-            it.mkdirs()
-            File(it, "droiddesk-fit-windows").writeText(script)
-            File(it, "droiddesk-fit-windows").setExecutable(true, false)
+        val apps = File(homeDir, ".local/share/applications").apply { mkdirs() }
+        val shell = resolveShell(binDir)
+
+        fun installScript(name: String, body: String) {
+            val file = File(localBin, name)
+            val cleaned = body.lineSequence()
+                .dropWhile { it.startsWith("#!") || it.isBlank() }
+                .joinToString("\n")
+                .trimStart()
+            file.writeText("#!$shell\n$cleaned\n")
+            file.setExecutable(true, false)
+            try {
+                Runtime.getRuntime().exec(arrayOf("chmod", "755", file.absolutePath)).waitFor()
+            } catch (_: Exception) {
+            }
+            binDir?.let { dir ->
+                dir.mkdirs()
+                val copy = File(dir, name)
+                copy.writeText(file.readText())
+                copy.setExecutable(true, false)
+                try {
+                    Runtime.getRuntime().exec(arrayOf("chmod", "755", copy.absolutePath)).waitFor()
+                } catch (_: Exception) {
+                }
+            }
         }
+
+        fun helperExec(name: String): String =
+            "\"$shell\" \"${File(localBin, name).absolutePath}\""
+
+        installScript("droiddesk-fit-windows", fitWindowsScript())
+        installScript("droiddesk-vnc-share", vncShareScript())
+        installScript("droiddesk-vnc-stop", vncStopScript())
+        installScript("droiddesk-vnc-connect", vncConnectScript())
+        installScript("droiddesk-show-ip", showIpScript())
+
+        writeMenuDesktop(
+            File(apps, "droiddesk-vnc-share.desktop"),
+            name = "Share Desktop (VNC)",
+            comment = "Share this Linux desktop on port 5901 for a Pi or laptop",
+            exec = helperExec("droiddesk-vnc-share"),
+            icon = "network-transmit-symbolic",
+        )
+        writeMenuDesktop(
+            File(apps, "droiddesk-vnc-stop.desktop"),
+            name = "Stop VNC Share",
+            comment = "Stop sharing this desktop over VNC",
+            exec = helperExec("droiddesk-vnc-stop"),
+            icon = "process-stop-symbolic",
+        )
+        writeMenuDesktop(
+            File(apps, "droiddesk-vnc-connect.desktop"),
+            name = "Connect to VNC…",
+            comment = "Open a VNC viewer to another computer",
+            exec = helperExec("droiddesk-vnc-connect"),
+            icon = "network-receive-symbolic",
+        )
+        writeMenuDesktop(
+            File(apps, "droiddesk-show-ip.desktop"),
+            name = "Show Network / IP",
+            comment = "Show IP addresses for VNC, SSH, or the Pi bridge",
+            exec = helperExec("droiddesk-show-ip"),
+            icon = "network-workgroup-symbolic",
+        )
+        writeMenuDesktop(
+            File(apps, "droiddesk-fit-windows.desktop"),
+            name = "Fit Windows to Screen",
+            comment = "Maximize open windows to the current display size",
+            exec = helperExec("droiddesk-fit-windows"),
+            icon = "zoom-fit-best-symbolic",
+        )
+
+        // Keep a single dock launcher with a VNC submenu (avoids icon overcrowding).
+        val panelDir = File(homeDir, ".config/xfce4/panel")
+        writeLauncher(
+            File(panelDir, "launcher-26/droiddesk-vnc-share.desktop"),
+            name = "Share VNC",
+            comment = "Share this desktop to a Pi or laptop (port 5901)",
+            exec = helperExec("droiddesk-vnc-share"),
+            icon = "network-transmit-symbolic",
+        )
+        writeLauncher(
+            File(panelDir, "launcher-26/droiddesk-vnc-connect.desktop"),
+            name = "VNC Connect",
+            comment = "Connect to another computer via VNC",
+            exec = helperExec("droiddesk-vnc-connect"),
+            icon = "network-receive-symbolic",
+        )
+        writeLauncher(
+            File(panelDir, "launcher-26/droiddesk-vnc-stop.desktop"),
+            name = "Stop VNC Share",
+            comment = "Stop sharing this desktop over VNC",
+            exec = helperExec("droiddesk-vnc-stop"),
+            icon = "process-stop-symbolic",
+        )
+        writeLauncher(
+            File(panelDir, "launcher-26/droiddesk-show-ip.desktop"),
+            name = "Show IP",
+            comment = "Show this phone's IP addresses for VNC / SSH",
+            exec = helperExec("droiddesk-show-ip"),
+            icon = "network-workgroup-symbolic",
+        )
+        File(panelDir, "launcher-28").deleteRecursively()
+        File(panelDir, "launcher-29").deleteRecursively()
     }
+
+    private fun resolveShell(binDir: File?): String {
+        if (binDir != null) {
+            listOf("bash", "sh").forEach { name ->
+                val candidate = File(binDir, name)
+                if (candidate.exists()) return candidate.absolutePath
+            }
+        }
+        listOf("/bin/bash", "/usr/bin/bash", "/bin/sh").forEach { path ->
+            if (File(path).exists()) return path
+        }
+        return "bash"
+    }
+
+    /** @deprecated Use [ensureHelpers]. Kept for call-site compatibility. */
+    fun ensureFitWindowsHelper(homeDir: File, binDir: File? = null) =
+        ensureHelpers(homeDir, binDir)
 
     fun fitWindowsScript(): String = """
         #!/bin/sh
@@ -150,7 +309,6 @@ object XfceMobileProfile {
                 continue
                 ;;
             esac
-            # Force a rematch against the new root: unmaximize → size → maximize.
             wmctrl -i -r "${'$'}id" -b remove,fullscreen,maximized_vert,maximized_horz >/dev/null 2>&1 || true
             wmctrl -i -r "${'$'}id" -e "0,0,0,${'$'}w,${'$'}h" >/dev/null 2>&1 || true
             wmctrl -i -r "${'$'}id" -b add,maximized_vert,maximized_horz >/dev/null 2>&1 || true
@@ -167,11 +325,176 @@ object XfceMobileProfile {
         fi
     """.trimIndent() + "\n"
 
+    private fun shellNotifyHelpers(): String = """
+        _dd_notify() {
+          title="${'$'}1"; body="${'$'}2"
+          if command -v notify-send >/dev/null 2>&1; then
+            notify-send -a DroidDesk "${'$'}title" "${'$'}body" 2>/dev/null || true
+          fi
+          if command -v zenity >/dev/null 2>&1; then
+            zenity --info --title="${'$'}title" --text="${'$'}body" --width=380 2>/dev/null &
+          fi
+        }
+        _dd_error() {
+          title="${'$'}1"; body="${'$'}2"
+          if command -v notify-send >/dev/null 2>&1; then
+            notify-send -u critical -a DroidDesk "${'$'}title" "${'$'}body" 2>/dev/null || true
+          fi
+          if command -v zenity >/dev/null 2>&1; then
+            zenity --error --title="${'$'}title" --text="${'$'}body" --width=380 2>/dev/null || true
+          else
+            xfce4-terminal -T "${'$'}title" -e "bash -c 'echo \"${'$'}body\"; echo; read -n1 -p \"Press any key…\"'" 2>/dev/null || true
+          fi
+        }
+        _dd_primary_ip() {
+          ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if(${'$'}i=="src"){print ${'$'}(i+1); exit}}'
+        }
+        _dd_all_ips() {
+          ip -4 -o addr show scope global 2>/dev/null | awk '{gsub(/\/.*/,"",${'$'}4); print ${'$'}2": "${'$'}4}'
+          # USB tether / Wi‑Fi fallbacks on Android
+          for iface in wlan0 rndis0 usb0 eth0; do
+            addr=${'$'}(ip -4 -o addr show dev "${'$'}iface" 2>/dev/null | awk '{gsub(/\/.*/,"",${'$'}4); print ${'$'}4}')
+            [ -n "${'$'}addr" ] && echo "${'$'}iface: ${'$'}addr"
+          done
+        }
+    """.trimIndent()
+
+    private fun vncShareScript(): String = """
+        # Share the live DroidDesk X session over VNC at a laptop-sized resolution.
+        export DISPLAY="${'$'}{DISPLAY:-:0}"
+        export PATH="${'$'}HOME/.local/bin:${'$'}PREFIX/bin:/usr/bin:/bin:${'$'}PATH"
+        ${shellNotifyHelpers()}
+
+        if ! command -v x11vnc >/dev/null 2>&1; then
+          _dd_error "VNC Share" "x11vnc is not installed.
+
+Install once in Terminal:
+  pkg install x11vnc
+
+Then tap Share VNC again."
+          exit 1
+        fi
+
+        mkdir -p "${'$'}HOME/.cache"
+        # Ask Android to switch X to 1920x1080 before advertising VNC.
+        echo vnc > "${'$'}HOME/.cache/droiddesk-display-mode"
+        _dd_notify "VNC Share" "Switching desktop to 1920×1080 for Mac/laptop…
+Then starting VNC on port 5901."
+        # Give DesktopActivity time to apply exact resolution + remaximize windows.
+        sleep 2.5
+
+        pkill -x x11vnc >/dev/null 2>&1 || true
+        sleep 0.3
+        LOG="${'$'}HOME/.cache/droiddesk-x11vnc.log"
+        # LAN-tuned: threads + light defer, client pixmap cache, low poll wait.
+        # Phone CPU still caps smoothness at 1080p over Wi‑Fi.
+        x11vnc \
+          -display :0 \
+          -forever -shared \
+          -rfbport 5901 -nopw \
+          -threads \
+          -speeds lan \
+          -defer 10 -wait 10 \
+          -ncache 10 -ncache_cr \
+          -pointer_mode 1 \
+          -bg -o "${'$'}LOG" >/dev/null 2>&1
+        sleep 0.5
+        if ! pgrep -x x11vnc >/dev/null 2>&1; then
+          echo phone > "${'$'}HOME/.cache/droiddesk-display-mode"
+          _dd_error "VNC Share" "Failed to start x11vnc.
+See ${'$'}LOG"
+          exit 1
+        fi
+        IP=${'$'}(_dd_primary_ip)
+        [ -z "${'$'}IP" ] && IP="(enable Wi‑Fi or USB tethering)"
+        _dd_notify "VNC sharing (1920×1080)" "Connect from Mac / laptop:
+
+  ${'$'}IP:5901
+
+Tip: USB tethering is snappier than Wi‑Fi.
+In TigerVNC: F8 → Full screen (optional).
+Stop VNC Share when done (restores phone layout)."
+    """.trimIndent() + "\n"
+
+    private fun vncStopScript(): String = """
+        export PATH="${'$'}HOME/.local/bin:${'$'}PREFIX/bin:/usr/bin:/bin:${'$'}PATH"
+        ${shellNotifyHelpers()}
+        mkdir -p "${'$'}HOME/.cache"
+        if pgrep -x x11vnc >/dev/null 2>&1; then
+          pkill -x x11vnc >/dev/null 2>&1 || true
+        fi
+        echo phone > "${'$'}HOME/.cache/droiddesk-display-mode"
+        _dd_notify "VNC Share" "Stopped. Restoring phone display layout…"
+    """.trimIndent() + "\n"
+
+    private fun vncConnectScript(): String = """
+        #!/bin/sh
+        export DISPLAY="${'$'}{DISPLAY:-:0}"
+        export PATH="${'$'}HOME/.local/bin:${'$'}PREFIX/bin:/usr/bin:/bin:${'$'}PATH"
+        ${shellNotifyHelpers()}
+
+        VIEWER=""
+        for c in vncviewer xtigervncviewer tigervnc; do
+          if command -v "${'$'}c" >/dev/null 2>&1; then VIEWER="${'$'}c"; break; fi
+        done
+        if [ -z "${'$'}VIEWER" ]; then
+          _dd_error "VNC Connect" "No VNC viewer found.
+
+Install once in Terminal:
+  pkg install tigervnc-viewer"
+          exit 1
+        fi
+
+        HOST=""
+        if command -v zenity >/dev/null 2>&1; then
+          HOST=${'$'}(zenity --entry --title="VNC Connect" --text="Host IP or hostname (optional :port):" --entry-text="192.168." 2>/dev/null) || exit 0
+        else
+          HOST=${'$'}(xfce4-terminal --disable-server -T "VNC Connect" -e "bash -c 'read -rp \"Host IP (optional :port): \" h; echo \"${'$'}h\" > /tmp/droiddesk-vnc-host'" 2>/dev/null; cat /tmp/droiddesk-vnc-host 2>/dev/null)
+        fi
+        [ -n "${'$'}HOST" ] || exit 0
+        case "${'$'}HOST" in
+          *:*) TARGET="${'$'}HOST" ;;
+          *)   TARGET="${'$'}HOST:5901" ;;
+        esac
+        exec "${'$'}VIEWER" "${'$'}TARGET"
+    """.trimIndent() + "\n"
+
+    private fun showIpScript(): String = """
+        #!/bin/sh
+        export DISPLAY="${'$'}{DISPLAY:-:0}"
+        export PATH="${'$'}HOME/.local/bin:${'$'}PREFIX/bin:/usr/bin:/bin:${'$'}PATH"
+        ${shellNotifyHelpers()}
+        IPS=${'$'}(_dd_all_ips | awk '!seen[${'$'}0]++')
+        PRIMARY=${'$'}(_dd_primary_ip)
+        if [ -z "${'$'}IPS" ] && [ -z "${'$'}PRIMARY" ]; then
+          _dd_error "Network / IP" "No IPv4 address found.
+Enable Wi‑Fi or USB tethering, then try again."
+          exit 1
+        fi
+        MSG="Primary: ${'$'}{PRIMARY:-(none)}
+
+${'$'}IPS
+
+VNC share uses port 5901 (Share VNC on the dock).
+Pi bridge: run pi-launch_phone.sh on the Pi after USB tethering."
+        _dd_notify "Network / IP" "${'$'}MSG"
+    """.trimIndent() + "\n"
+
     private fun cleanupAndroidAppsArtifacts(homeDir: File, binDir: File?) {
         File(homeDir, ".local/share/applications/droiddesk-android-apps.desktop").delete()
         File(homeDir, ".local/bin/droiddesk-android-apps").delete()
         File(homeDir, ".config/xfce4/panel/launcher-27").deleteRecursively()
         binDir?.let { File(it, "droiddesk-android-apps").delete() }
+    }
+
+    private fun writeMenuDesktop(
+        file: File,
+        name: String,
+        comment: String,
+        exec: String,
+        icon: String,
+    ) {
+        writeLauncher(file, name, comment, exec, icon, categories = "Network;System;Utility;")
     }
 
     private fun writeLauncher(
@@ -180,6 +503,7 @@ object XfceMobileProfile {
         comment: String,
         exec: String,
         icon: String,
+        categories: String = "Utility;System;",
     ) {
         file.parentFile?.mkdirs()
         file.writeText(
@@ -191,7 +515,7 @@ object XfceMobileProfile {
             Comment=$comment
             Exec=$exec
             Icon=$icon
-            Categories=Utility;System;
+            Categories=$categories
             StartupNotify=true
             Terminal=false
             """.trimIndent() + "\n",
@@ -235,6 +559,7 @@ object XfceMobileProfile {
               min-width: 0;
               padding: 4px;
               margin: 0;
+              color: #f2f4f8;
             }
             .xfce4-panel .tasklist button,
             .xfce4-panel .tasklist .button {
@@ -248,16 +573,62 @@ object XfceMobileProfile {
               margin: 0;
               padding: 0;
             }
-            /* Custom panel bg breaks Adwaita-dark label colors — force light text. */
+            /* Dark custom panel: light chrome + symbolic icons. */
             .xfce4-panel {
-              color: #f5f7fa;
+              color: #f2f4f8;
+              -gtk-icon-style: symbolic;
             }
-            .xfce4-panel label,
+            .xfce4-panel > menubar,
+            .xfce4-panel > widget > box,
+            .xfce4-panel button,
+            .xfce4-panel button label,
             .xfce4-panel .clock label,
             .xfce4-panel .digital-clock label,
             #clock-button label {
-              color: #f5f7fa;
+              color: #f2f4f8;
               opacity: 1;
+            }
+            .xfce4-panel image,
+            .xfce4-panel button image,
+            .xfce4-panel .image {
+              color: #f2f4f8;
+              -gtk-icon-recoloring: true;
+              opacity: 1;
+            }
+            /*
+             * Panel label color must NOT leak into launcher popups (that made
+             * light text on a white menu). Force a dark readable menu instead.
+             */
+            menu,
+            .menu,
+            .xfce4-panel menu,
+            window.popup menu {
+              background-color: #1e222a;
+              color: #f2f4f8;
+              border: 1px solid #3a4150;
+            }
+            menu menuitem,
+            .menu menuitem,
+            .xfce4-panel menu menuitem {
+              color: #f2f4f8;
+              padding: 8px 12px;
+            }
+            menu menuitem label,
+            .menu menuitem label,
+            .xfce4-panel menu menuitem label,
+            menu menuitem image,
+            .xfce4-panel menu menuitem image {
+              color: #f2f4f8 !important;
+            }
+            menu menuitem:hover,
+            .menu menuitem:hover,
+            .xfce4-panel menu menuitem:hover {
+              background-color: #2f3642;
+              color: #ffffff !important;
+            }
+            menu menuitem:hover label,
+            .xfce4-panel menu menuitem:hover label {
+              color: #ffffff !important;
             }
             $endMarker
         """.trimIndent()
@@ -325,6 +696,7 @@ object XfceMobileProfile {
                 <value type="int" value="21"/>
                 <value type="int" value="22"/>
                 <value type="int" value="23"/>
+                <value type="int" value="26"/>
                 <value type="int" value="24"/>
                 <value type="int" value="25"/>
               </property>
@@ -366,6 +738,14 @@ object XfceMobileProfile {
             <property name="plugin-23" type="string" value="launcher">
               <property name="items" type="array">
                 <value type="string" value="droiddesk-browser.desktop"/>
+              </property>
+            </property>
+            <property name="plugin-26" type="string" value="launcher">
+              <property name="items" type="array">
+                <value type="string" value="droiddesk-vnc-share.desktop"/>
+                <value type="string" value="droiddesk-vnc-connect.desktop"/>
+                <value type="string" value="droiddesk-vnc-stop.desktop"/>
+                <value type="string" value="droiddesk-show-ip.desktop"/>
               </property>
             </property>
             <property name="plugin-24" type="string" value="separator">

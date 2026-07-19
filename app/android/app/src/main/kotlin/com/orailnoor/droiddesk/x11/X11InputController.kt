@@ -61,19 +61,50 @@ class X11InputController(private val lorieView: LorieView) {
         inputHandler.handleTouchEvent(lorieView, view, event)
 
     companion object {
-        /** Keep 200 — changing this previously correlated with black screens on restart. */
+        /** Phone UI default — changing this previously correlated with black screens. */
         const val DISPLAY_SCALE_PERCENT = 200
+
+        /** Full desktop size used while VNC is shared to a laptop/monitor. */
+        const val VNC_DESKTOP_WIDTH = 1920
+        const val VNC_DESKTOP_HEIGHT = 1080
+
+        const val DISPLAY_MODE_PHONE = "phone"
+        const val DISPLAY_MODE_VNC = "vnc"
+
+        /** Written by droiddesk-vnc-share / stop under \$HOME/.cache/ */
+        const val DISPLAY_MODE_FILENAME = "droiddesk-display-mode"
 
         /** Must run before LorieView is measured so Xwayland starts at the scaled resolution. */
         fun configureDisplayScale() {
+            applyPhoneDisplayPrefs()
+        }
+
+        fun applyPhoneDisplayPrefs() {
             MainActivity.getPrefs().apply {
                 displayResolutionMode.put("scaled")
                 displayScale.put(DISPLAY_SCALE_PERCENT)
                 displayStretch.put(true)
                 scaleTouchpad.put(true)
-                // Swap X dimensions when the phone rotates so the desktop matches.
                 adjustResolution.put(true)
-                // Phone default: trackpad gestures (tap = click, scroll, right-click).
+                touchMode.put(TouchInputHandler.InputMode.TRACKPAD.toString())
+            }
+        }
+
+        /**
+         * Laptop-sized framebuffer for VNC viewers. The phone still shows this
+         * surface (letterboxed/scaled); Mac/Pi get a real desktop resolution.
+         */
+        fun applyVncDesktopPrefs(
+            width: Int = VNC_DESKTOP_WIDTH,
+            height: Int = VNC_DESKTOP_HEIGHT,
+        ) {
+            MainActivity.getPrefs().apply {
+                displayResolutionMode.put("exact")
+                displayResolutionExact.put("${width}x${height}")
+                displayStretch.put(true)
+                scaleTouchpad.put(true)
+                // Keep landscape/portrait swap off for a fixed VNC desktop.
+                adjustResolution.put(false)
                 touchMode.put(TouchInputHandler.InputMode.TRACKPAD.toString())
             }
         }

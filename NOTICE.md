@@ -24,7 +24,8 @@ This repository (`DroidDeskLauncher`) extends DroidDesk with:
 
 - an optional Android **home-launcher** entry point (`LauncherRouterActivity`)
 - phone-oriented XFCE layout and floating desktop controls
-- session start and rotate handling improvements for on-device use
+- dock helpers for **VNC share/connect** (including a 1920×1080 display mode while sharing)
+- session start, rotate, and window-fit handling improvements for on-device use
 
 Bundled desktop wallpapers under `app/android/app/src/main/assets/droiddesk/wallpapers/`
 are from [Unsplash](https://unsplash.com) under the

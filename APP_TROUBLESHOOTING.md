@@ -88,3 +88,11 @@ sed -i 's/geteuid/getppid/g' /path/to/your/vlc/binary
 ### Soft keyboard
 
 X11 cannot reliably detect “text field focused.” Use the floating **Keyboard** button (or keep a BT keyboard connected).
+
+### Share VNC (Mac / Pi / laptop)
+
+1. Dock **VNC** → **Share VNC**. Wait for the toast / notify that the desktop is **1920×1080**, then connect to `PHONE_IP:5901` (no password by default).
+2. If the viewer shows a tiny phone-sized desktop, stop VNC, **Launch Desktop** once (refreshes helpers), share again, and reconnect.
+3. Some lag is normal over Wi‑Fi at 1080p. Prefer USB tethering when possible. USB-C HDMI / DeX on DP Alt Mode phones is the low-latency external-display path.
+4. **Stop VNC Share** restores the phone-scaled layout. If Share fails, install once from Terminal: `pkg install x11vnc`.
+5. Dock scripts need a working bash shebang; if you see “Permission denied” on Share/Fit helpers, open the desktop once after updating so helpers refresh.

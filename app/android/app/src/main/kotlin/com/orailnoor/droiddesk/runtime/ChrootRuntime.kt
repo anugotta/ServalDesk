@@ -58,6 +58,12 @@ class ChrootRuntime(private val context: Context) {
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
+    fun refreshDesktopHelpers() {
+        if (!isRootfsReady()) return
+        val homeDir = File(rootfsDir, "root")
+        XfceMobileProfile.ensureHelpers(homeDir)
+    }
+
     fun getRootfsPath(): String = rootfsDir.absolutePath
 
     fun getRootfsSizeMB(): Long = rootfsManager.getRootfsSizeMB()
@@ -319,7 +325,7 @@ class ChrootRuntime(private val context: Context) {
                 ),
                 wallpaperPathPrefixInSession = "/usr/share/backgrounds/droiddesk",
             )
-            XfceMobileProfile.ensureFitWindowsHelper(homeDir)
+            XfceMobileProfile.ensureHelpers(homeDir)
         }
 
         ensureMounts()
